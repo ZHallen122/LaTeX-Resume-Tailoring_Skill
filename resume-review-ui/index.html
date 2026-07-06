@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Resume Review Cockpit</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="source-panel" aria-label="Inputs">
+        <header class="panel-header">
+          <div>
+            <h1>Resume Review Cockpit</h1>
+            <p>LaTeX to readable resume review</p>
+          </div>
+          <button class="icon-button" id="runReview" type="button" title="Run review" aria-label="Run review">
+            <span aria-hidden="true">↻</span>
+          </button>
+        </header>
+
+        <div class="input-stack">
+          <label class="field">
+            <span>Target JD</span>
+            <textarea id="jobDescription" spellcheck="true">Senior Software Engineer role focused on backend systems, distributed services, Python, TypeScript, AWS, APIs, observability, scalability, reliability, and cross-functional product delivery.</textarea>
+          </label>
+
+          <label class="field">
+            <span>Career Vault</span>
+            <textarea id="careerVault" spellcheck="true">Built backend services in Python and TypeScript, owned API integrations, improved observability dashboards, reduced incident triage time, worked with AWS Lambda and PostgreSQL, partnered with product and design on customer-facing workflows.</textarea>
+          </label>
+
+          <label class="field tall">
+            <span>resume.tex</span>
+            <textarea id="latexResume" spellcheck="false">\section{Experience}
+\resumeSubheading{Software Engineer}{2022 -- Present}{ExampleCo}{New York, NY}
+\resumeItemListStart
+\resumeItem{Built Python services and TypeScript internal tools for customer support workflows.}
+\resumeItem{Created API integrations and PostgreSQL reporting jobs used by operations teams.}
+\resumeItem{Improved dashboards and alerts for production workflows.}
+\resumeItemListEnd
+
+\section{Projects}
+\resumeItemListStart
+\resumeItem{Resume tailoring assistant that parses LaTeX resumes and compares bullets against job descriptions.}
+\resumeItemListEnd
+
+\section{Skills}
+Python, TypeScript, AWS, PostgreSQL, REST APIs, React, Docker</textarea>
+          </label>
+        </div>
+      </section>
+
+      <section class="preview-panel" aria-label="Readable resume preview">
+        <header class="toolbar">
+          <div>
+            <h2>Readable Resume</h2>
+            <p id="resumeStats">0 sections · 0 bullets</p>
+          </div>
+          <div class="segmented" role="tablist" aria-label="Preview mode">
+            <button class="segment active" type="button" data-preview="resume">Resume</button>
+            <button class="segment" type="button" data-preview="coverage">Coverage</button>
+          </div>
+        </header>
+        <div id="resumePreview" class="resume-preview"></div>
+        <div id="coveragePreview" class="coverage-preview hidden"></div>
+      </section>
+
+      <section class="review-panel" aria-label="Review versions">
+        <header class="toolbar">
+          <div>
+            <h2>Review Versions</h2>
+            <p id="reviewScore">Run review</p>
+          </div>
+          <button class="secondary-button" id="copyReport" type="button">Copy</button>
+        </header>
+
+        <div class="tabs" role="tablist" aria-label="Review perspectives">
+          <button class="tab active" type="button" data-review="ats">ATS</button>
+          <button class="tab" type="button" data-review="recruiter">HR</button>
+          <button class="tab" type="button" data-review="sde">Senior SDE</button>
+          <button class="tab" type="button" data-review="integrity">Integrity</button>
+          <button class="tab" type="button" data-review="rewrite">Patch Ideas</button>
+        </div>
+
+        <article id="reviewOutput" class="review-output"></article>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
