@@ -39,6 +39,8 @@ The project also includes a small static review cockpit for reading LaTeX resume
 
 ## Install For Codex
 
+Current skill version: `0.1.0`
+
 Run the Codex-only setup script from the repository root:
 
 ```bash
@@ -55,6 +57,18 @@ If the skill is already installed and you want to replace it:
 
 ```bash
 ./setup_codex.sh --force
+```
+
+If the skill is already installed and you only want to update when this checkout has a newer version:
+
+```bash
+./setup_codex.sh --upgrade
+```
+
+Check the version in this checkout:
+
+```bash
+./setup_codex.sh --version
 ```
 
 Restart Codex after installation if it was already running.
