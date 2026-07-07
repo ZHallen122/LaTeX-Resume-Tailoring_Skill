@@ -158,7 +158,13 @@ For dual-output tailoring, review both variants and include a short comparison:
 - Stretch variant: expected recruiter/ATS upside, specific claims that require user confirmation, and exact claims to remove if the user cannot defend them.
 - Recommendation: which version to submit and why.
 
-### 7. Final Response
+### 7. Open the Review Cockpit When Helpful
+
+The installed skill includes a bundled static frontend at `resume-review-ui/index.html`, next to this `SKILL.md`. Use it when the user asks to see the result in a browser, asks for a visual review, or would benefit from comparing the original and tailored LaTeX without reading raw source.
+
+No dev server or build step is required. Open the local HTML file directly when the host environment allows browser or file opening. If browser automation is available, load the page, paste the JD, career vault, unchanged original resume, and selected tailored resume variant into the fields, then run the review. If opening local files is not available, return the absolute path to `resume-review-ui/index.html` so the user can open it.
+
+### 8. Final Response
 
 Return or summarize:
 
@@ -166,6 +172,7 @@ Return or summarize:
 - Strict variant `resume.tex` path.
 - Stretch variant `resume.tex` path.
 - Compiled PDF paths when compilation succeeds.
+- Review cockpit path, and whether it was opened or populated when requested.
 - Change summary grouped by section and variant.
 - ATS, HR recruiter, and senior SDE review result for both variants.
 - Risk report covering hallucination risk, keyword stuffing risk, format drift risk, unsupported claims, claims requiring confirmation, and remaining JD gaps.

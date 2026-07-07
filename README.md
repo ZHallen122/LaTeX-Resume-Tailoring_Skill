@@ -39,9 +39,9 @@ The project also includes a small static review cockpit for reading LaTeX resume
 
 ## Install For Codex
 
-Current skill version: `0.1.0`
+Current skill version: `0.1.1`
 
-Run the Codex-only setup script from the repository root:
+Run the setup script from the repository root:
 
 ```bash
 ./setup_codex.sh
@@ -51,6 +51,12 @@ This installs the skill to:
 
 ```bash
 ${CODEX_HOME:-$HOME/.codex}/skills/latex-resume-tailoring
+```
+
+It also installs the static review cockpit to:
+
+```bash
+${CODEX_HOME:-$HOME/.codex}/skills/latex-resume-tailoring/resume-review-ui/index.html
 ```
 
 If the skill is already installed and you want to replace it:
@@ -194,7 +200,15 @@ The optional static frontend helps users review LaTeX resume content without rea
 resume-review-ui/index.html
 ```
 
+When installed with `./setup_codex.sh`, the same cockpit is bundled inside the installed skill:
+
+```text
+${CODEX_HOME:-$HOME/.codex}/skills/latex-resume-tailoring/resume-review-ui/index.html
+```
+
 Open that file in a browser. No dev server or build step is required.
+
+After Codex creates tailored resume variants, it can open this local page when the host environment allows browser/file opening. With browser automation available, Codex can load the page, paste the JD, career vault, original resume, and tailored resume into the fields, then run the review view for the user.
 
 The cockpit supports:
 
@@ -256,7 +270,6 @@ If the resume exceeds one page:
 
 ## Current Limitations
 
-- The setup script installs Codex only.
 - The review cockpit is a local static prototype and does not persist data.
 - The compile helper depends on local LaTeX tools for PDF generation.
 - The skill can enforce hard-fact boundaries only when the user provides a reliable career vault.

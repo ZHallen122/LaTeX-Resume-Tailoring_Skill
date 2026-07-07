@@ -5,7 +5,7 @@ usage() {
   cat <<'EOF'
 Usage: ./setup_codex.sh [--upgrade] [--force] [--version]
 
-Install the latex-resume-tailoring skill for Codex only.
+Install the latex-resume-tailoring skill and bundled review cockpit for Codex.
 
 Options:
   --upgrade Replace the installed skill only when this copy has a newer version.
@@ -16,6 +16,9 @@ Options:
 
 Install location:
   ${CODEX_HOME:-$HOME/.codex}/skills/latex-resume-tailoring
+
+Bundled review cockpit:
+  ${CODEX_HOME:-$HOME/.codex}/skills/latex-resume-tailoring/resume-review-ui/index.html
 EOF
 }
 
@@ -70,6 +73,12 @@ compare_versions() {
   fi
 }
 
+copy_review_ui() {
+  local destination="$1"
+  mkdir -p "$destination/$ui_name"
+  cp -R "$ui_source_dir/." "$destination/$ui_name/"
+}
+
 force=0
 upgrade=0
 show_version=0
@@ -101,10 +110,13 @@ done
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 skill_name="latex-resume-tailoring"
+ui_name="resume-review-ui"
 source_dir="$repo_root/$skill_name"
+ui_source_dir="$repo_root/$ui_name"
 codex_home="${CODEX_HOME:-$HOME/.codex}"
 skills_dir="$codex_home/skills"
 target_dir="$skills_dir/$skill_name"
+target_ui_file="$target_dir/$ui_name/index.html"
 source_version="$(read_version "$source_dir/VERSION")"
 
 if [[ "$show_version" -eq 1 ]]; then
@@ -114,6 +126,11 @@ fi
 
 if [[ ! -f "$source_dir/SKILL.md" ]]; then
   echo "Missing $source_dir/SKILL.md. Run this script from the repository root." >&2
+  exit 1
+fi
+
+if [[ ! -f "$ui_source_dir/index.html" || ! -f "$ui_source_dir/app.js" || ! -f "$ui_source_dir/styles.css" ]]; then
+  echo "Missing bundled review cockpit files under $ui_source_dir." >&2
   exit 1
 fi
 
@@ -144,12 +161,30 @@ if [[ -e "$target_dir" ]]; then
 
   if [[ "$force" -ne 1 && "$upgrade" -ne 1 ]]; then
     if [[ "$installed_version" == "$source_version" ]]; then
+      if [[ ! -f "$target_ui_file" ]]; then
+        copy_review_ui "$target_dir"
+        cat <<EOF
+Skill already installed:
+  $target_dir
+
+Version:
+  $source_version
+
+Added bundled review cockpit:
+  $target_ui_file
+EOF
+        exit 0
+      fi
+
       cat <<EOF
 Skill already installed:
   $target_dir
 
 Version:
   $source_version
+
+Review cockpit:
+  $target_ui_file
 
 No changes made.
 EOF
@@ -195,12 +230,30 @@ EOF
 
     version_cmp="$(compare_versions "$source_version" "$installed_version")"
     if [[ "$version_cmp" -eq 0 ]]; then
+      if [[ ! -f "$target_ui_file" ]]; then
+        copy_review_ui "$target_dir"
+        cat <<EOF
+Skill already installed at the same version:
+  $target_dir
+
+Version:
+  $source_version
+
+Added bundled review cockpit:
+  $target_ui_file
+EOF
+        exit 0
+      fi
+
       cat <<EOF
 Skill already installed at the same version:
   $target_dir
 
 Version:
   $source_version
+
+Review cockpit:
+  $target_ui_file
 
 No changes made.
 EOF
@@ -233,6 +286,7 @@ trap cleanup EXIT
 
 mkdir -p "$tmp_dir/$skill_name"
 cp -R "$source_dir/." "$tmp_dir/$skill_name/"
+copy_review_ui "$tmp_dir/$skill_name"
 mv "$tmp_dir/$skill_name" "$target_dir"
 
 cat <<EOF
@@ -241,6 +295,9 @@ Installed Codex skill:
 
 Version:
   $source_version
+
+Bundled review cockpit:
+  $target_ui_file
 
 Restart Codex if it is already running, then invoke it with:
   Use \$latex-resume-tailoring to tailor my resume.tex for this JD using my career vault. Generate strict and stretch variants.
