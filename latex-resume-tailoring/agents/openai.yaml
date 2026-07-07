@@ -1,4 +1,4 @@
 interface:
   display_name: "LaTeX Resume Tailoring"
-  short_description: "Tailor truthful LaTeX resumes to jobs"
-  default_prompt: "Use $latex-resume-tailoring to tailor my existing LaTeX resume to this job description using only my verified career vault."
+  short_description: "Tailor strict and stretch LaTeX resumes to jobs"
+  default_prompt: "Use $latex-resume-tailoring to tailor my existing LaTeX resume to this job description using my verified career vault. Generate strict and stretch variants."

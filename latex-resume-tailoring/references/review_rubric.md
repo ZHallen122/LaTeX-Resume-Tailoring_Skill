@@ -42,6 +42,18 @@ Flag any issue that could reduce trust:
 - Keyword stuffing risk: repeated or awkward JD terms that disrupt natural bullets.
 - Format drift risk: template, spacing, section order, macro, or tone changes that were not necessary.
 - Vague inflation: broad claims without evidence, context, or result.
+- Confirmation risk: any Stretch variant claim that is plausible but not verified and must be confirmed by the user before submission.
 - Remaining JD gaps: important requirements with no verified match.
 
 For each meaningful modification, be able to explain why it was necessary for relevance, clarity, ATS coverage, or one-page fit.
+
+## Dual Variant Comparison
+
+When the tailoring workflow produces both Strict and Stretch variants, compare them explicitly:
+
+- Strict variant: assess the safest submission version, direct evidence coverage, and unresolved JD gaps.
+- Stretch variant: assess recruiter/ATS upside, interview defensibility, and each claim requiring confirmation.
+- Removal list: identify any Stretch claim that should be deleted if the user cannot personally defend it.
+- Recommendation: state whether to submit the Strict variant, submit the Stretch variant after confirmation, or use the Strict variant with selected Stretch edits.
+
+Do not treat the Stretch variant as permission to fabricate hard facts. The review must fail any invented employer, title, date, degree, certification, technology, metric, production scope, security/compliance claim, leadership scope, or ownership claim.

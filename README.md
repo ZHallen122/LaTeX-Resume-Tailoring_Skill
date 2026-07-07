@@ -1,8 +1,8 @@
 # LaTeX Resume Tailoring Skill
 
-LaTeX Resume Tailoring is a Codex skill for tailoring an existing `resume.tex` to a target job description. It preserves the user's resume structure and style, uses a verified career vault as the source of truth, and produces review output from ATS, recruiter, senior engineering, and integrity perspectives.
+LaTeX Resume Tailoring is a Codex skill for tailoring an existing `resume.tex` to a target job description. It preserves the user's resume structure and style, uses a verified career vault as the source of truth for hard facts, and produces strict plus aggressive-but-verifiable resume variants with ATS, recruiter, senior engineering, and integrity reviews.
 
-The skill never edits the user's source `resume.tex` in place. It first creates a versioned working copy under `resume_variants/`, then patches and compiles that copy so users can generate and compare multiple tailored versions.
+The skill never edits the user's source `resume.tex` in place. It first creates versioned working copies under `resume_variants/`, then patches and compiles those copies so users can compare a conservative submission with a stronger stretch submission.
 
 The project also includes a small static review cockpit for reading LaTeX resume content in a more human-friendly way before or after tailoring.
 
@@ -10,11 +10,13 @@ The project also includes a small static review cockpit for reading LaTeX resume
 
 - Analyzes a target job description for required skills, preferred skills, seniority signals, domain keywords, and likely recruiter/ATS priorities.
 - Matches the JD against a verified career vault or master resume.
-- Creates a versioned copy of the existing `resume.tex`, then patches that copy instead of generating a new template or mutating the original.
-- Avoids invented experience, metrics, tools, responsibilities, dates, or ownership claims.
-- Compiles the resume to PDF and checks page count when a local LaTeX environment is available.
-- Reports ATS, HR recruiter, Senior SDE, and integrity review results.
-- Flags hallucination risk, keyword stuffing risk, format drift risk, and remaining JD gaps.
+- Creates strict and stretch versioned copies of the existing `resume.tex`, then patches those copies instead of generating a new template or mutating the original.
+- Keeps the strict variant directly supported by the vault.
+- Makes the stretch variant more aggressive while still defensible: stronger framing, adjacent evidence, and clearly flagged claims that need user confirmation.
+- Avoids invented experience, metrics, tools, responsibilities, dates, credentials, production scope, or ownership claims.
+- Compiles both resumes to PDF and checks page count when a local LaTeX environment is available.
+- Reports ATS, HR recruiter, Senior SDE, and integrity review results for both variants.
+- Flags hallucination risk, keyword stuffing risk, format drift risk, claims requiring confirmation, and remaining JD gaps.
 
 ## Repository Layout
 
@@ -92,7 +94,7 @@ sudo apt-get install texlive-latex-recommended texlive-latex-extra latexmk poppl
 After installing, invoke the skill in Codex:
 
 ```text
-Use $latex-resume-tailoring to tailor my resume.tex for this job description using only my career vault. Keep it one page.
+Use $latex-resume-tailoring to tailor my resume.tex for this job description using my career vault. Generate strict and stretch versions. Keep both one page.
 ```
 
 Provide or point Codex to:
@@ -106,32 +108,36 @@ Constraints: one page, emphasize backend/platform work, preserve current formatt
 
 The skill will ask for missing required inputs. In particular, it must ask for a career vault or equivalent verified source before making factual resume edits.
 
+If you ask for a fake, deceptive, or inflated resume, the skill should not fabricate credentials or experience. It will instead produce the stretch variant: the strongest version that remains interview-defensible, with any unverified but plausible claims called out for confirmation before submission.
+
 ## Expected Workflow
 
 1. Codex checks whether JD, `resume.tex`, and career vault are available.
 2. Codex asks concise follow-up questions for missing materials.
 3. Codex analyzes the JD and identifies role priorities.
 4. Codex builds a truth map from JD requirements to verified career evidence.
-5. Codex creates a versioned working copy under `resume_variants/<YYYYMMDD>-<label>-vNN>/resume.tex`.
-6. Codex patches the copied LaTeX resume without changing the template.
-7. Codex compiles the PDF and checks the page limit when LaTeX tools are installed.
-8. Codex compresses or trims content if the resume exceeds the page limit.
-9. Codex returns the unchanged source path, updated variant path, PDF path when available, change summary, reviews, and risk report.
+5. Codex creates strict and stretch working copies under `resume_variants/<YYYYMMDD>-<label>-strict-vNN>/resume.tex` and `resume_variants/<YYYYMMDD>-<label>-stretch-vNN>/resume.tex`.
+6. Codex patches both copied LaTeX resumes without changing the template.
+7. Codex compiles both PDFs and checks the page limit when LaTeX tools are installed.
+8. Codex compresses or trims content if either resume exceeds the page limit.
+9. Codex returns the unchanged source path, both updated variant paths, PDF paths when available, change summary, reviews, risk report, and a submission recommendation.
 
 If the user only wants a high-level review and has not provided a career vault, the skill should proceed as review-only and label unsupported gaps clearly.
 
 ## Versioned Resume Copies
 
-Create an editable resume variant before tailoring:
+Create editable resume variants before tailoring:
 
 ```bash
-python3 latex-resume-tailoring/scripts/create_resume_variant.py path/to/resume.tex --label company-role
+python3 latex-resume-tailoring/scripts/create_resume_variant.py path/to/resume.tex --label company-role-strict
+python3 latex-resume-tailoring/scripts/create_resume_variant.py path/to/resume.tex --label company-role-stretch
 ```
 
-The helper creates:
+The helpers create:
 
 ```text
-path/to/resume_variants/YYYYMMDD-company-role-v01/resume.tex
+path/to/resume_variants/YYYYMMDD-company-role-strict-v01/resume.tex
+path/to/resume_variants/YYYYMMDD-company-role-stretch-v01/resume.tex
 ```
 
 Run it again with the same label on the same day and it creates `v02`, `v03`, and so on. Use `--copy-assets` when the LaTeX template depends on sibling images, style files, fonts, or other local assets.
@@ -194,7 +200,7 @@ The current UI is heuristic and runs fully in the browser. It does not call an L
 
 ## Integrity Rules
 
-The skill treats the career vault as the source of truth. It must not add:
+The skill treats the career vault as the source of truth for hard facts. It must not add:
 
 - New employers, roles, titles, or dates
 - New degrees, certifications, or credentials
@@ -203,6 +209,8 @@ The skill treats the career vault as the source of truth. It must not add:
 - Unsupported production, scale, security, compliance, leadership, or ownership claims
 
 When the JD asks for something the vault does not support, the skill reports a remaining gap instead of fabricating evidence.
+
+The stretch variant is intentionally less conservative, but it is not a fake-resume mode. It may sharpen language and surface adjacent experience, but any claim that is not clearly verified must be listed as "needs confirmation" in the final risk report before the user submits it.
 
 ## Troubleshooting
 
@@ -235,4 +243,4 @@ If the resume exceeds one page:
 - The setup script installs Codex only.
 - The review cockpit is a local static prototype and does not persist data.
 - The compile helper depends on local LaTeX tools for PDF generation.
-- The skill can enforce truthfulness only when the user provides a reliable career vault.
+- The skill can enforce hard-fact boundaries only when the user provides a reliable career vault.

@@ -83,5 +83,5 @@ Installed Codex skill:
   $target_dir
 
 Restart Codex if it is already running, then invoke it with:
-  Use \$latex-resume-tailoring to tailor my resume.tex for this JD using my career vault.
+  Use \$latex-resume-tailoring to tailor my resume.tex for this JD using my career vault. Generate strict and stretch variants.
 EOF
