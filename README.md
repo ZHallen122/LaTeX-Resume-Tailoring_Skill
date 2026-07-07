@@ -200,7 +200,9 @@ The cockpit supports:
 
 - JD input
 - Career vault input
-- `resume.tex` input
+- Original `resume.tex` input
+- Current/tailored `resume.tex` input
+- Readable comparison view with green highlights for additions and changed words
 - Human-readable resume preview
 - Keyword coverage view
 - ATS review
