@@ -1,5 +1,5 @@
 const state = {
-  previewMode: "resume",
+  previewMode: "compare",
   reviewMode: "ats",
   analysis: null,
 };
@@ -73,9 +73,11 @@ const knownSkills = [
 const els = {
   jd: document.getElementById("jobDescription"),
   vault: document.getElementById("careerVault"),
+  original: document.getElementById("originalLatex"),
   latex: document.getElementById("latexResume"),
   run: document.getElementById("runReview"),
   copy: document.getElementById("copyReport"),
+  comparePreview: document.getElementById("comparePreview"),
   resumePreview: document.getElementById("resumePreview"),
   coveragePreview: document.getElementById("coveragePreview"),
   resumeStats: document.getElementById("resumeStats"),
@@ -134,6 +136,175 @@ function parseResume(latex) {
   return sections;
 }
 
+function normalizeForCompare(value) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9+#./%-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function significantWords(value) {
+  return normalizeForCompare(value)
+    .split(" ")
+    .filter((word) => word.length > 1 && !stopWords.has(word));
+}
+
+function lineSimilarity(a, b) {
+  const aWords = new Set(significantWords(a));
+  const bWords = new Set(significantWords(b));
+  const union = new Set([...aWords, ...bWords]);
+  if (!union.size) return 0;
+  let overlap = 0;
+  aWords.forEach((word) => {
+    if (bWords.has(word)) overlap += 1;
+  });
+  return overlap / union.size;
+}
+
+function closestLine(line, candidates) {
+  return candidates.reduce(
+    (best, candidate) => {
+      const score = lineSimilarity(line, candidate);
+      return score > best.score ? { line: candidate, score } : best;
+    },
+    { line: "", score: 0 }
+  );
+}
+
+function sectionKey(title) {
+  return normalizeForCompare(title) || "resume";
+}
+
+function flattenLines(sections) {
+  return sections.flatMap((section) => section.lines);
+}
+
+function buildResumeDiff(originalSections, currentSections) {
+  const originalBySection = new Map();
+  const currentBySection = new Map();
+  const originalLines = flattenLines(originalSections);
+  const originalLineKeys = new Set(originalLines.map(normalizeForCompare));
+  const usedOriginalKeys = new Set();
+
+  originalSections.forEach((section) => {
+    originalBySection.set(sectionKey(section.title), section);
+  });
+  currentSections.forEach((section) => {
+    currentBySection.set(sectionKey(section.title), section);
+  });
+
+  const sections = currentSections.map((section) => {
+    const key = sectionKey(section.title);
+    const originalSection = originalBySection.get(key);
+    const sectionCandidates = originalSection?.lines.length ? originalSection.lines : originalLines;
+    const rows = section.lines.map((line) => {
+      const lineKey = normalizeForCompare(line);
+      if (originalLineKeys.has(lineKey)) {
+        usedOriginalKeys.add(lineKey);
+        return { type: "same", line };
+      }
+
+      const match = closestLine(line, sectionCandidates);
+      if (match.score >= 0.34) {
+        usedOriginalKeys.add(normalizeForCompare(match.line));
+        return { type: "changed", line, previous: match.line };
+      }
+
+      return { type: "added", line };
+    });
+
+    const currentKeys = new Set(section.lines.map(normalizeForCompare));
+    const removed = (originalSection?.lines || []).filter((line) => {
+      const keyForLine = normalizeForCompare(line);
+      return keyForLine && !currentKeys.has(keyForLine) && !usedOriginalKeys.has(keyForLine);
+    });
+
+    return { title: section.title, rows, removed };
+  });
+
+  originalSections.forEach((section) => {
+    const key = sectionKey(section.title);
+    if (currentBySection.has(key)) return;
+    sections.push({
+      title: section.title,
+      rows: [],
+      removed: section.lines,
+    });
+  });
+
+  const added = sections.reduce(
+    (total, section) => total + section.rows.filter((row) => row.type === "added").length,
+    0
+  );
+  const changed = sections.reduce(
+    (total, section) => total + section.rows.filter((row) => row.type === "changed").length,
+    0
+  );
+  const removed = sections.reduce((total, section) => total + section.removed.length, 0);
+
+  return { sections, added, changed, removed };
+}
+
+function tokenizeForDiff(value) {
+  return value.match(/[A-Za-z0-9+#./%-]+|[^A-Za-z0-9+#./%-]+/g) || [];
+}
+
+function tokenKey(token) {
+  return /[A-Za-z0-9]/.test(token) ? normalizeForCompare(token) : "";
+}
+
+function significantTokenIndexes(tokens) {
+  return tokens
+    .map((token, index) => ({ token, index, key: tokenKey(token) }))
+    .filter((item) => item.key);
+}
+
+function currentTokenMatches(previous, current) {
+  const previousTokens = significantTokenIndexes(tokenizeForDiff(previous));
+  const currentTokens = significantTokenIndexes(tokenizeForDiff(current));
+  const table = Array.from({ length: previousTokens.length + 1 }, () =>
+    Array(currentTokens.length + 1).fill(0)
+  );
+
+  for (let i = previousTokens.length - 1; i >= 0; i -= 1) {
+    for (let j = currentTokens.length - 1; j >= 0; j -= 1) {
+      table[i][j] =
+        previousTokens[i].key === currentTokens[j].key
+          ? table[i + 1][j + 1] + 1
+          : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+  }
+
+  const matches = new Set();
+  let i = 0;
+  let j = 0;
+  while (i < previousTokens.length && j < currentTokens.length) {
+    if (previousTokens[i].key === currentTokens[j].key) {
+      matches.add(currentTokens[j].index);
+      i += 1;
+      j += 1;
+    } else if (table[i + 1][j] >= table[i][j + 1]) {
+      i += 1;
+    } else {
+      j += 1;
+    }
+  }
+
+  return matches;
+}
+
+function renderChangedText(previous, current) {
+  const tokens = tokenizeForDiff(current);
+  const matches = currentTokenMatches(previous, current);
+  return tokens
+    .map((token, index) => {
+      if (!tokenKey(token) || matches.has(index)) return escapeHtml(token);
+      return `<mark class="diff-token-added">${escapeHtml(token)}</mark>`;
+    })
+    .join("");
+}
+
 function extractKeywords(text) {
   const lower = text.toLowerCase();
   const foundSkills = knownSkills.filter((skill) => lower.includes(skill));
@@ -162,6 +333,7 @@ function scoreCoverage(keywords, resumeText, vaultText) {
 }
 
 function analyze() {
+  const originalSections = parseResume(els.original.value);
   const sections = parseResume(els.latex.value);
   const resumeText = sections.flatMap((section) => section.lines).join(" ");
   const keywords = extractKeywords(els.jd.value);
@@ -171,14 +343,70 @@ function analyze() {
   const misses = coverage.filter((item) => item.status === "miss").length;
   const bullets = sections.reduce((total, section) => total + section.lines.length, 0);
   const score = keywords.length ? Math.round(((hits + partials * 0.55) / keywords.length) * 100) : 0;
+  const diff = buildResumeDiff(originalSections, sections);
 
-  state.analysis = { sections, resumeText, keywords, coverage, hits, partials, misses, bullets, score };
+  state.analysis = {
+    originalSections,
+    sections,
+    resumeText,
+    keywords,
+    coverage,
+    hits,
+    partials,
+    misses,
+    bullets,
+    score,
+    diff,
+  };
   renderAll();
+}
+
+function renderCompare() {
+  const { diff } = state.analysis;
+  const totalChanges = diff.added + diff.changed + diff.removed;
+  const summary = `<div class="diff-summary" aria-label="Difference summary">
+    <div><strong>${diff.added}</strong><span>added</span></div>
+    <div><strong>${diff.changed}</strong><span>changed</span></div>
+    <div><strong>${diff.removed}</strong><span>removed</span></div>
+  </div>`;
+
+  if (!totalChanges) {
+    els.comparePreview.innerHTML = `${summary}<p class="empty">No differences detected against the original resume.</p>`;
+    return;
+  }
+
+  els.comparePreview.innerHTML =
+    summary +
+    diff.sections
+      .map((section) => {
+        const rows = section.rows
+          .map((row) => {
+            if (row.type === "same") {
+              return `<li class="diff-line same"><span class="diff-badge">Same</span><span>${escapeHtml(row.line)}</span></li>`;
+            }
+            if (row.type === "added") {
+              return `<li class="diff-line added"><span class="diff-badge">Added</span><span><mark class="diff-token-added">${escapeHtml(row.line)}</mark></span></li>`;
+            }
+            return `<li class="diff-line changed">
+              <div class="diff-current"><span class="diff-badge">Changed</span><span>${renderChangedText(row.previous, row.line)}</span></div>
+              <div class="diff-before">Was: ${escapeHtml(row.previous)}</div>
+            </li>`;
+          })
+          .join("");
+        const removed = section.removed.length
+          ? `<div class="diff-removed-block"><strong>Removed from original</strong><ul>${section.removed
+              .map((line) => `<li>${escapeHtml(line)}</li>`)
+              .join("")}</ul></div>`
+          : "";
+        return `<section class="diff-section"><h3>${escapeHtml(section.title)}</h3><ul class="diff-list">${rows}</ul>${removed}</section>`;
+      })
+      .join("");
 }
 
 function renderResume() {
   const { sections, bullets } = state.analysis;
-  els.resumeStats.textContent = `${sections.length} sections · ${bullets} bullets`;
+  const { added, changed, removed } = state.analysis.diff;
+  els.resumeStats.textContent = `${sections.length} sections · ${bullets} bullets · ${added + changed + removed} changes`;
   els.resumePreview.innerHTML = sections
     .map((section) => {
       const lines = section.lines.length
@@ -311,11 +539,13 @@ function renderReview() {
 }
 
 function renderPreviewMode() {
+  els.comparePreview.classList.toggle("hidden", state.previewMode !== "compare");
   els.resumePreview.classList.toggle("hidden", state.previewMode !== "resume");
   els.coveragePreview.classList.toggle("hidden", state.previewMode !== "coverage");
 }
 
 function renderAll() {
+  renderCompare();
   renderResume();
   renderCoverage();
   renderScore();
@@ -324,9 +554,10 @@ function renderAll() {
 }
 
 function currentReportText() {
-  const { score, hits, partials, misses } = state.analysis;
+  const { score, hits, partials, misses, diff } = state.analysis;
   return [
     `Resume review: ${score}% coverage`,
+    `Diff: ${diff.added} added, ${diff.changed} changed, ${diff.removed} removed`,
     `Matched: ${hits}`,
     `Vault-only: ${partials}`,
     `Gaps: ${misses}`,
@@ -353,7 +584,7 @@ document.querySelectorAll("[data-review]").forEach((button) => {
   });
 });
 
-[els.jd, els.vault, els.latex].forEach((input) => {
+[els.jd, els.vault, els.original, els.latex].forEach((input) => {
   input.addEventListener("input", () => analyze());
 });
 

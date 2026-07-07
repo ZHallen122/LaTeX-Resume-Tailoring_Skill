@@ -12,7 +12,7 @@
         <header class="panel-header">
           <div>
             <h1>Resume Review Cockpit</h1>
-            <p>LaTeX to readable resume review</p>
+            <p>LaTeX diff and readable resume review</p>
           </div>
           <button class="icon-button" id="runReview" type="button" title="Run review" aria-label="Run review">
             <span aria-hidden="true">↻</span>
@@ -31,7 +31,25 @@
           </label>
 
           <label class="field tall">
-            <span>resume.tex</span>
+            <span>Original resume.tex</span>
+            <textarea id="originalLatex" spellcheck="false">\section{Experience}
+\resumeSubheading{Software Engineer}{2022 -- Present}{ExampleCo}{New York, NY}
+\resumeItemListStart
+\resumeItem{Built Python services and TypeScript internal tools for customer support workflows.}
+\resumeItem{Created API integrations and PostgreSQL reporting jobs used by operations teams.}
+\resumeItemListEnd
+
+\section{Projects}
+\resumeItemListStart
+\resumeItem{Resume tailoring assistant that parses LaTeX resumes.}
+\resumeItemListEnd
+
+\section{Skills}
+Python, TypeScript, AWS, PostgreSQL, REST APIs, React</textarea>
+          </label>
+
+          <label class="field tall">
+            <span>Current / tailored resume.tex</span>
             <textarea id="latexResume" spellcheck="false">\section{Experience}
 \resumeSubheading{Software Engineer}{2022 -- Present}{ExampleCo}{New York, NY}
 \resumeItemListStart
@@ -58,11 +76,13 @@ Python, TypeScript, AWS, PostgreSQL, REST APIs, React, Docker</textarea>
             <p id="resumeStats">0 sections · 0 bullets</p>
           </div>
           <div class="segmented" role="tablist" aria-label="Preview mode">
-            <button class="segment active" type="button" data-preview="resume">Resume</button>
+            <button class="segment active" type="button" data-preview="compare">Compare</button>
+            <button class="segment" type="button" data-preview="resume">Resume</button>
             <button class="segment" type="button" data-preview="coverage">Coverage</button>
           </div>
         </header>
-        <div id="resumePreview" class="resume-preview"></div>
+        <div id="comparePreview" class="compare-preview"></div>
+        <div id="resumePreview" class="resume-preview hidden"></div>
         <div id="coveragePreview" class="coverage-preview hidden"></div>
       </section>
 

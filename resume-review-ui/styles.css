@@ -99,7 +99,7 @@ p,
 
 .input-stack {
   display: grid;
-  grid-template-rows: minmax(140px, 0.7fr) minmax(120px, 0.6fr) minmax(260px, 1.4fr);
+  grid-template-rows: minmax(120px, 0.55fr) minmax(110px, 0.5fr) minmax(210px, 1fr) minmax(230px, 1.1fr);
   gap: 12px;
   min-height: 0;
   height: 100%;
@@ -204,7 +204,8 @@ textarea:focus {
 
 .review-output,
 .resume-preview,
-.coverage-preview {
+.coverage-preview,
+.compare-preview {
   min-height: 0;
   overflow: auto;
   padding: 16px;
@@ -341,6 +342,150 @@ textarea:focus {
   font-style: italic;
 }
 
+.diff-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.diff-summary div {
+  display: grid;
+  gap: 2px;
+  min-height: 58px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.diff-summary strong {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.diff-summary span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 720;
+  text-transform: uppercase;
+}
+
+.diff-section {
+  padding: 0 0 18px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 18px;
+}
+
+.diff-section:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+
+.diff-section h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.diff-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diff-line {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 10px;
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  line-height: 1.45;
+}
+
+.diff-line.same {
+  color: #33404c;
+}
+
+.diff-line.added,
+.diff-line.changed {
+  border-color: #9dd8bf;
+  background: #fbfffd;
+}
+
+.diff-line.changed {
+  grid-template-columns: 1fr;
+}
+
+.diff-current {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 10px;
+}
+
+.diff-before {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.diff-badge {
+  align-self: start;
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: #eef2f4;
+  color: #41515f;
+  font-size: 11px;
+  font-weight: 760;
+  text-align: center;
+}
+
+.added .diff-badge,
+.changed .diff-badge {
+  background: var(--soft-green);
+  color: var(--green);
+}
+
+.diff-token-added {
+  border-radius: 4px;
+  padding: 1px 2px;
+  background: #c9f2df;
+  color: #075f48;
+}
+
+.diff-removed-block {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--red);
+  background: var(--soft-red);
+  color: var(--red);
+}
+
+.diff-removed-block strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.diff-removed-block ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.diff-removed-block li {
+  margin: 5px 0;
+  line-height: 1.45;
+  text-decoration: line-through;
+}
+
 .hidden {
   display: none;
 }
@@ -387,5 +532,14 @@ textarea:focus {
   .segment,
   .tab {
     flex: 1 0 auto;
+  }
+
+  .diff-line,
+  .diff-current {
+    grid-template-columns: 1fr;
+  }
+
+  .diff-before {
+    grid-column: 1;
   }
 }
