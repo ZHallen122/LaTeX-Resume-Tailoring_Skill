@@ -2,13 +2,15 @@
 
 LaTeX Resume Tailoring is a Codex skill for tailoring an existing `resume.tex` to a target job description. It preserves the user's resume structure and style, uses a verified career vault as the source of truth, and produces review output from ATS, recruiter, senior engineering, and integrity perspectives.
 
+The skill never edits the user's source `resume.tex` in place. It first creates a versioned working copy under `resume_variants/`, then patches and compiles that copy so users can generate and compare multiple tailored versions.
+
 The project also includes a small static review cockpit for reading LaTeX resume content in a more human-friendly way before or after tailoring.
 
 ## What It Does
 
 - Analyzes a target job description for required skills, preferred skills, seniority signals, domain keywords, and likely recruiter/ATS priorities.
 - Matches the JD against a verified career vault or master resume.
-- Patches the existing `resume.tex` directly instead of generating a new template.
+- Creates a versioned copy of the existing `resume.tex`, then patches that copy instead of generating a new template or mutating the original.
 - Avoids invented experience, metrics, tools, responsibilities, dates, or ownership claims.
 - Compiles the resume to PDF and checks page count when a local LaTeX environment is available.
 - Reports ATS, HR recruiter, Senior SDE, and integrity review results.
@@ -22,7 +24,9 @@ The project also includes a small static review cockpit for reading LaTeX resume
 │   ├── SKILL.md
 │   ├── agents/openai.yaml
 │   ├── references/review_rubric.md
-│   └── scripts/check_latex_resume.py
+│   └── scripts/
+│       ├── check_latex_resume.py
+│       └── create_resume_variant.py
 ├── resume-review-ui/
 │   ├── index.html
 │   ├── styles.css
@@ -108,12 +112,29 @@ The skill will ask for missing required inputs. In particular, it must ask for a
 2. Codex asks concise follow-up questions for missing materials.
 3. Codex analyzes the JD and identifies role priorities.
 4. Codex builds a truth map from JD requirements to verified career evidence.
-5. Codex patches the existing LaTeX resume without changing the template.
-6. Codex compiles the PDF and checks the page limit when LaTeX tools are installed.
-7. Codex compresses or trims content if the resume exceeds the page limit.
-8. Codex returns the updated `resume.tex`, PDF path when available, change summary, reviews, and risk report.
+5. Codex creates a versioned working copy under `resume_variants/<YYYYMMDD>-<label>-vNN>/resume.tex`.
+6. Codex patches the copied LaTeX resume without changing the template.
+7. Codex compiles the PDF and checks the page limit when LaTeX tools are installed.
+8. Codex compresses or trims content if the resume exceeds the page limit.
+9. Codex returns the unchanged source path, updated variant path, PDF path when available, change summary, reviews, and risk report.
 
 If the user only wants a high-level review and has not provided a career vault, the skill should proceed as review-only and label unsupported gaps clearly.
+
+## Versioned Resume Copies
+
+Create an editable resume variant before tailoring:
+
+```bash
+python3 latex-resume-tailoring/scripts/create_resume_variant.py path/to/resume.tex --label company-role
+```
+
+The helper creates:
+
+```text
+path/to/resume_variants/YYYYMMDD-company-role-v01/resume.tex
+```
+
+Run it again with the same label on the same day and it creates `v02`, `v03`, and so on. Use `--copy-assets` when the LaTeX template depends on sibling images, style files, fonts, or other local assets.
 
 ## Compile And Page Check Script
 
