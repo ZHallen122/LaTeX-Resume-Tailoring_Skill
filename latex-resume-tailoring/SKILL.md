@@ -93,18 +93,18 @@ python3 scripts/render_review.py --original path/to/resume.tex \
 
 Compile the original resume once too (`check_latex_resume.py path/to/resume.tex`) so the report can embed a side-by-side compiled preview: when `<dir>/build/resume.pdf` exists and `pdftoppm` is available, each variant panel shows the original and tailored PDFs as images — the user reviews the visual result in the page, no Overleaf needed.
 
-For a live, Overleaf-like loop, run the same command with `--serve` (in the background — it blocks) and give the user the URL:
-
-```bash
-python3 scripts/render_review.py --original ... --variant ... --variant ... --serve 8437
-# → http://127.0.0.1:8437/
-```
-
-Served over HTTP, every panel gains a **Recompile preview** button: the user drops changes and clicks it, and the server reverts those edits, recompiles, and swaps in the fresh preview with a page-count status — no download round-trip.
-
 The script writes `resume_variants/review.html` and prints a JSON summary. **Exit code 3 means unexplained changes exist** — edits in the file that no manifest entry declares. Fix each one by either adding an honest manifest entry or reverting the edit, then re-run until the summary says `"ok": true`. Do not present results to the user while unexplained changes remain.
 
-Open the report (or give its absolute path) — it shows per-bullet before/after with word-level highlights, rationale, risk badges, the needs-confirmation checklist, keyword coverage, and what was kept verbatim.
+Once the summary says `"ok": true`, **start the live review server — this is the default way to present the result**, not an option. Run the same command with `--serve` in the background (it blocks); with no port argument it auto-picks a free port and prints the URL on stderr — read it from the process output and give it to the user:
+
+```bash
+python3 scripts/render_review.py --original ... --variant ... --variant ... --serve
+# stderr → Live preview server: http://127.0.0.1:<port>/  (Ctrl+C to stop)
+```
+
+Served over HTTP, every panel gains a **Recompile preview** button: the user drops changes and clicks it, and the server reverts those edits, recompiles, and swaps in the fresh preview with a page-count status — no download round-trip. Fall back to handing over the `review.html` path alone only when a background server genuinely can't run (no background-process support, sandboxed environment) — the file is fully self-contained, so everything except live recompile still works.
+
+The report shows per-bullet before/after with word-level highlights, rationale, risk badges, the needs-confirmation checklist, keyword coverage, and what was kept verbatim.
 
 The report is also interactive: every change card has a **Keep / Drop** toggle. The user can drop any change they dislike and click "Download final resume.tex" to get a file with dropped changes reverted to the original wording (built entirely in the browser), or "Copy decisions JSON" to hand their selections back to you. **When the user pastes a decisions JSON**, apply it server-side: revert each dropped change in the variant's `resume.tex`, delete the corresponding `changes.json` entries, recompile, and re-run `render_review.py` so the report matches the final file.
 
@@ -114,4 +114,4 @@ Read `references/review_rubric.md`. Cover ATS, recruiter, senior-engineer, and i
 
 ### 9. Final response
 
-Report: original path (unchanged), both variant paths, PDF paths and page counts, the `review.html` path, per-variant change counts (declared / kept verbatim / needs-confirmation), keyword gaps, the four-angle review, and the submission recommendation. If no vault was provided, state that the resume itself was the fact boundary.
+Report: original path (unchanged), both variant paths, PDF paths and page counts, the live review URL (plus the `review.html` path as fallback), per-variant change counts (declared / kept verbatim / needs-confirmation), keyword gaps, the four-angle review, and the submission recommendation. If no vault was provided, state that the resume itself was the fact boundary.
