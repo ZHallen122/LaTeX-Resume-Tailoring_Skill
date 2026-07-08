@@ -296,6 +296,81 @@ class TestBuildFinalText(unittest.TestCase):
         self.assertEqual(warnings, [])
         self.assertIn("saving \\textbf{\\$5,000} annually", text)
 
+    def test_edited_change_swaps_in_the_new_wording(self):
+        variant_text = ORIG.replace("Developed a", "Engineered a")
+        changes = [
+            {
+                "id": 0,
+                "type": "rewrite",
+                "kind": "bullet",
+                "orig_raw": "Developed a C\\#/.NET installer with WiX, saving \\textbf{\\$5,000} annually.",
+                "var_raw": "Engineered a C\\#/.NET installer with WiX, saving \\textbf{\\$5,000} annually.",
+                "prev_raw": "",
+            }
+        ]
+        edited = "Shipped a C\\#/.NET installer with WiX, saving \\textbf{\\$5,000} annually."
+        text, warnings = build_final_text(variant_text, changes, dropped_ids=set(), edits={0: edited})
+        self.assertEqual(warnings, [])
+        self.assertIn(edited, text)
+        self.assertNotIn("Engineered a C\\#", text)
+
+    def test_edited_add_replaces_the_added_bullet_text(self):
+        added = "  \\item Wrote integration tests for the installer.\n"
+        variant_text = ORIG.replace("\\end{itemize}", added + "\\end{itemize}")
+        changes = [
+            {
+                "id": 0,
+                "type": "add",
+                "kind": "bullet",
+                "orig_raw": "",
+                "var_raw": "Wrote integration tests for the installer.",
+                "prev_raw": "",
+            }
+        ]
+        text, warnings = build_final_text(
+            variant_text, changes, dropped_ids=set(), edits={0: "Wrote end-to-end tests for the installer."}
+        )
+        self.assertEqual(warnings, [])
+        self.assertIn("\\item Wrote end-to-end tests for the installer.", text)
+        self.assertNotIn("integration tests", text)
+
+    def test_edit_on_duplicate_text_is_skipped_with_warning(self):
+        dup = wrap_doc(
+            "\\sectionline{A}\n\\begin{itemize}\n  \\item Led a team of five engineers.\n\\end{itemize}\n"
+            "\\sectionline{B}\n\\begin{itemize}\n  \\item Led a team of five engineers.\n\\end{itemize}"
+        )
+        changes = [
+            {
+                "id": 0,
+                "type": "rewrite",
+                "kind": "bullet",
+                "orig_raw": "Managed a team of five engineers.",
+                "var_raw": "Led a team of five engineers.",
+                "prev_raw": "",
+            }
+        ]
+        text, warnings = build_final_text(dup, changes, dropped_ids=set(), edits={0: "Led a team of six engineers."})
+        self.assertEqual(text, dup)  # nothing silently rewritten
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("appears 2 times", warnings[0])
+
+    def test_drop_wins_over_edit_for_the_same_change(self):
+        # The UI can't produce both, but a hand-crafted request could; drop must win.
+        variant_text = ORIG.replace("Developed a", "Engineered a")
+        changes = [
+            {
+                "id": 0,
+                "type": "rewrite",
+                "kind": "bullet",
+                "orig_raw": "Developed a C\\#/.NET installer with WiX, saving \\textbf{\\$5,000} annually.",
+                "var_raw": "Engineered a C\\#/.NET installer with WiX, saving \\textbf{\\$5,000} annually.",
+                "prev_raw": "",
+            }
+        ]
+        text, warnings = build_final_text(variant_text, changes, dropped_ids={0}, edits={0: "Whatever."})
+        self.assertEqual(warnings, [])
+        self.assertEqual(text, ORIG)
+
 
 # ---------------------------------------------------------------------------
 # Keyword auto-verification

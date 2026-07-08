@@ -2,6 +2,14 @@
 
 All notable changes to the latex-resume-tailoring skill.
 
+## [0.6.0] - 2026-07-08
+
+### Added
+- **Edit** toggle on every change card (alongside Keep/Drop): fine-tune the suggested wording in place via a raw-LaTeX textarea, with reset-to-suggestion and empty-text guard. Edits flow through the browser-built final `resume.tex`, the live Recompile preview, and the decisions JSON (`edited` entries carry the `new_latex` text for the agent to apply server-side). Edits persist in the browser alongside Keep/Drop selections; `remove`-type changes have no "after" text and keep the plain Keep/Drop toggle.
+
+### Changed
+- `build_final_text()` (server twin of the in-browser builder) accepts an `edits` map; ambiguous edits (target text appearing more than once) are skipped with a warning instead of silently rewriting the wrong bullet, matching the existing drop-revert behavior.
+
 ## [0.5.0] - 2026-07-08
 
 ### Added

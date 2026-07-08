@@ -4,7 +4,7 @@ An agent skill (Claude Code and Codex) for tailoring an existing `resume.tex` to
 
 - Every edit must be declared in a `changes.json` manifest: which bullet changed, which JD requirement it serves, what evidence backs it, and its risk level (`verified` / `adjacent` / `needs-confirmation`).
 - `render_review.py` cross-checks the manifest against the actual file diff and renders a single self-contained `review.html`: per-bullet before/after with word-level highlighting, rationale and risk badges on every change, a needs-confirmation checklist, JD keyword coverage, and the list of bullets kept verbatim.
-- The report is interactive: each change has a **Keep / Drop** toggle. Drop the changes you dislike and download a final `resume.tex` with them reverted to the original wording — built entirely in the browser, no server. Or copy the decisions JSON back to the agent to apply, recompile, and re-review.
+- The report is interactive: each change has a **Keep / Edit / Drop** toggle. Drop the changes you dislike, or edit a suggestion in place to fine-tune its wording, and download a final `resume.tex` with drops reverted and edits applied — built entirely in the browser, no server. Or copy the decisions JSON back to the agent to apply, recompile, and re-review.
 - The compiled result is visible in the page: when variant PDFs exist (and `pdftoppm` is installed), the report embeds original-vs-tailored page images side by side. The agent serves the report live by default (`render_review.py ... --serve`), which adds a **Recompile preview** button — drop changes, click, and the local server recompiles and refreshes the preview in seconds. No Overleaf round-trip.
 - Any edit the manifest does not explain is flagged as an **unexplained change** (exit code 3). The agent must declare it honestly or revert it before presenting results. Silent synonym-shuffling is treated as a bug.
 
@@ -42,7 +42,7 @@ Stretch is stronger *positioning* of the same true facts — reordering, selecti
 
 ## Install
 
-Current skill version: `0.5.0`
+Current skill version: `0.6.0`
 
 ```bash
 ./setup.sh                  # installs for both Claude Code and Codex
@@ -106,7 +106,7 @@ The parser targets standard LaTeX: `\item` bullets, `\section`-style headings, `
 python3 -m unittest discover -s tests -v
 ```
 
-Covers unit extraction across template styles (standard, Jake's Resume, moderncv), paragraph merging, CRLF handling, anti-churn validation (undeclared synonym swaps and metric tampering are flagged), keep/drop revert round-trips, and keyword verification.
+Covers unit extraction across template styles (standard, Jake's Resume, moderncv), paragraph merging, CRLF handling, anti-churn validation (undeclared synonym swaps and metric tampering are flagged), keep/drop revert round-trips, edit application (including the duplicate-text safety skip), and keyword verification.
 
 ## Requirements
 
