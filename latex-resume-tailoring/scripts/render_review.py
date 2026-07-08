@@ -439,17 +439,38 @@ def render_change_card(change: dict, original: list[Unit], variant: list[Unit], 
     if change.get("defense"):
         meta_rows.append(f'<div class="meta"><span class="k">Interview defense</span>{esc(change["defense"])}</div>')
 
+    after_view = '<p class="orig-view">{content}</p><p class="edited-view hidden"></p>'
     if change["type"] == "add":
-        body = f'<div class="col only"><div class="lbl">Added</div><p>{right or esc(after_plain)}</p></div>'
+        body = f'<div class="col only"><div class="lbl">Added</div>{after_view.format(content=right or esc(after_plain))}</div>'
     elif change["type"] == "remove":
         body = f'<div class="col only"><div class="lbl">Removed</div><p><del>{esc(before_plain)}</del></p></div>'
     else:
         body = (
             f'<div class="col"><div class="lbl">Before</div><p>{left or esc(before_plain)}</p></div>'
-            f'<div class="col"><div class="lbl">After</div><p>{right or esc(after_plain)}</p></div>'
+            f'<div class="col"><div class="lbl">After</div>{after_view.format(content=right or esc(after_plain))}</div>'
         )
 
     cid = change["_id"]
+    # "remove" changes have no "after" text to fine-tune; Keep/Drop covers them.
+    edit_btn = (
+        f"""<button class="t-edit" onclick="toggleEdit('{esc(vname)}',{cid})">Edit</button>"""
+        if change["type"] != "remove"
+        else ""
+    )
+    editbox = (
+        f"""
+      <div class="editbox hidden" id="edit-{esc(vname)}-{cid}">
+        <div class="lbl">Fine-tune this change (raw LaTeX — this exact text lands in the final .tex)</div>
+        <textarea id="edit-ta-{esc(vname)}-{cid}" rows="3" spellcheck="false"></textarea>
+        <div class="edit-actions">
+          <button class="primary" onclick="saveEdit('{esc(vname)}',{cid})">Save edit</button>
+          <button onclick="resetEdit('{esc(vname)}',{cid})">Reset to suggestion</button>
+          <button onclick="cancelEdit('{esc(vname)}',{cid})">Cancel</button>
+        </div>
+      </div>"""
+        if change["type"] != "remove"
+        else ""
+    )
     return f"""
     <article class="card" id="card-{esc(vname)}-{cid}">
       <header>
@@ -457,12 +478,13 @@ def render_change_card(change: dict, original: list[Unit], variant: list[Unit], 
         <span class="badge {risk_class}">{esc(risk_label)}</span>
         <span class="section-name">{esc(change.get("section", ""))}</span>
         {jd_chips}
-        <span class="toggle" role="group" aria-label="keep or drop this change">
+        <span class="toggle" role="group" aria-label="keep, edit, or drop this change">
           <button class="t-keep active" onclick="setDecision('{esc(vname)}',{cid},true)">Keep</button>
+          {edit_btn}
           <button class="t-drop" onclick="setDecision('{esc(vname)}',{cid},false)">Drop</button>
         </span>
       </header>
-      <div class="cols">{body}</div>
+      <div class="cols">{body}</div>{editbox}
       {"".join(meta_rows)}
     </article>"""
 
@@ -627,7 +649,8 @@ def render_variant_panel(
         <button onclick="copyDecisions('{esc(name)}')">Copy decisions JSON</button>
       </span>
     </div>
-    <p class="hint">Drop a change to revert that bullet to the original wording in the downloaded file. Selections are
+    <p class="hint">Drop a change to revert that bullet to the original wording in the downloaded file; Edit lets you
+    fine-tune the suggested wording instead (the box takes raw LaTeX). Selections and edits are
     saved in this browser. After downloading, recompile to re-check the one-page fit:
     <code>python3 scripts/check_latex_resume.py resume.tex --max-pages 1</code> — or paste the decisions JSON back to
     the agent to apply, compile, and re-review for you.</p>"""
@@ -709,9 +732,23 @@ th { color:var(--muted); font-size:12px; text-transform:uppercase; }
 .toggle { margin-left:auto; display:inline-flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; }
 .toggle button { font:600 11px/1 inherit; padding:5px 12px; border:0; background:transparent; color:var(--muted); cursor:pointer; }
 .toggle .t-keep.active { background:var(--add-bg); color:var(--add-fg); }
+.toggle .t-edit.active { background:#fef3c7; color:#92400e; }
 .toggle .t-drop.active { background:var(--del-bg); color:var(--del-fg); }
 .card.dropped { opacity:.5; border-style:dashed; }
 .card.dropped .cols, .card.dropped .meta { text-decoration:none; }
+.card.edited { border-color:var(--warn); }
+.edited-view { margin:0; font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  background:var(--add-bg); color:var(--add-fg); border-radius:6px; padding:6px 8px;
+  white-space:pre-wrap; word-break:break-word; }
+.editbox { margin-top:10px; }
+.editbox .lbl { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; margin-bottom:4px; }
+.editbox textarea { width:100%; min-height:64px; font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px;
+  resize:vertical; }
+.edit-actions { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+.edit-actions button { font:600 12px/1 inherit; padding:7px 12px; border-radius:8px; border:1px solid var(--line);
+  background:var(--card); color:var(--fg); cursor:pointer; }
+.edit-actions button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
 .actionbar { position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
   background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:6px;
   box-shadow:0 2px 8px rgba(0,0,0,.06); }
@@ -753,7 +790,8 @@ function showTab(name) {
 }
 
 const DATA = JSON.parse(document.getElementById('report-data').textContent);
-const decisions = {};  // vname -> { changeId -> true(keep)/false(drop) }
+// vname -> { changeId -> true(keep) / false(drop) / "..."(keep with edited raw LaTeX) }
+const decisions = {};
 const storeKey = v => 'resume-review:' + location.pathname + ':' + v;
 
 function loadDecisions(v) {
@@ -761,13 +799,58 @@ function loadDecisions(v) {
   DATA.variants[v].changes.forEach(c => { decisions[v][c.id] = true; });
   try {
     const saved = JSON.parse(localStorage.getItem(storeKey(v)) || '{}');
-    Object.keys(saved).forEach(k => { if (k in decisions[v]) decisions[v][k] = saved[k]; });
+    Object.keys(saved).forEach(k => {
+      if (k in decisions[v] && (typeof saved[k] === 'boolean' || typeof saved[k] === 'string')) {
+        decisions[v][k] = saved[k];
+      }
+    });
   } catch (e) {}
 }
 
-function setDecision(v, id, keep) {
-  decisions[v][id] = keep;
+function persist(v) {
   try { localStorage.setItem(storeKey(v), JSON.stringify(decisions[v])); } catch (e) {}
+}
+
+function changeById(v, id) { return DATA.variants[v].changes.find(c => c.id === id); }
+
+function setDecision(v, id, keep) {
+  decisions[v][id] = keep;  // choosing Keep or Drop discards any saved edit
+  persist(v);
+  const box = document.getElementById('edit-' + v + '-' + id);
+  if (box) box.classList.add('hidden');
+  refresh(v);
+}
+
+function toggleEdit(v, id) {
+  const box = document.getElementById('edit-' + v + '-' + id);
+  if (!box) return;
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  const dec = decisions[v][id];
+  const ta = document.getElementById('edit-ta-' + v + '-' + id);
+  ta.value = typeof dec === 'string' ? dec : changeById(v, id).var_raw;
+  box.classList.remove('hidden');
+  ta.focus();
+}
+
+function resetEdit(v, id) {
+  document.getElementById('edit-ta-' + v + '-' + id).value = changeById(v, id).var_raw;
+}
+
+function cancelEdit(v, id) {
+  document.getElementById('edit-' + v + '-' + id).classList.add('hidden');
+}
+
+function saveEdit(v, id) {
+  const ta = document.getElementById('edit-ta-' + v + '-' + id);
+  const text = ta.value.replace(/\\s+$/, '');
+  if (!text.trim()) {
+    alert('Edited text is empty — use Drop to revert to the original wording instead.');
+    return;
+  }
+  // Saving text identical to the suggestion is just a Keep.
+  decisions[v][id] = (text === changeById(v, id).var_raw) ? true : text;
+  persist(v);
+  cancelEdit(v, id);
   refresh(v);
 }
 
@@ -776,15 +859,27 @@ function refresh(v) {
   DATA.variants[v].changes.forEach(c => {
     const card = document.getElementById('card-' + v + '-' + c.id);
     if (!card) return;
-    const keep = d[c.id] !== false;
-    card.classList.toggle('dropped', !keep);
-    card.querySelector('.t-keep').classList.toggle('active', keep);
-    card.querySelector('.t-drop').classList.toggle('active', !keep);
+    const dec = d[c.id];
+    const edited = typeof dec === 'string';
+    card.classList.toggle('dropped', dec === false);
+    card.classList.toggle('edited', edited);
+    card.querySelector('.t-keep').classList.toggle('active', dec !== false && !edited);
+    card.querySelector('.t-drop').classList.toggle('active', dec === false);
+    const te = card.querySelector('.t-edit');
+    if (te) te.classList.toggle('active', edited);
+    const ov = card.querySelector('.orig-view'), ev = card.querySelector('.edited-view');
+    if (ov && ev) {
+      ov.classList.toggle('hidden', edited);
+      ev.classList.toggle('hidden', !edited);
+      if (edited) ev.textContent = dec;
+    }
   });
-  const total = DATA.variants[v].changes.length;
-  const kept = Object.values(d).filter(x => x !== false).length;
+  const vals = Object.values(d);
+  const kept = vals.filter(x => x !== false).length;
+  const edited = vals.filter(x => typeof x === 'string').length;
   const el = document.getElementById('ab-count-' + v);
-  if (el) el.textContent = 'Keeping ' + kept + ' of ' + total + ' changes';
+  if (el) el.textContent = 'Keeping ' + kept + ' of ' + DATA.variants[v].changes.length + ' changes'
+    + (edited ? ' (' + edited + ' edited)' : '');
 }
 
 function escRe(s) { return s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'); }
@@ -794,7 +889,16 @@ function buildFinal(v) {
   let text = vd.variant_text;
   const warnings = [];
   vd.changes.forEach(c => {
-    if (decisions[v][c.id] !== false) return;  // kept -> leave as-is
+    const dec = decisions[v][c.id];
+    if (typeof dec === 'string') {  // edited -> swap the suggested text for the fine-tuned wording
+      const occurrences = c.var_raw ? text.split(c.var_raw).length - 1 : 0;
+      if (occurrences === 1) text = text.replace(c.var_raw, () => dec);
+      else if (occurrences > 1) {
+        warnings.push('Change #' + c.id + ': text appears ' + occurrences + ' times — edit skipped to avoid rewriting the wrong bullet. Paste the decisions JSON to the agent instead.');
+      } else warnings.push('Could not apply the edit for change #' + c.id + ' — ask the agent to apply this.');
+      return;
+    }
+    if (dec !== false) return;  // kept -> leave as-is
     if (c.type === 'add') {
       const re = new RegExp('\\\\\\\\item\\\\s*' + escRe(c.var_raw) + '[ \\\\t]*\\\\n?');
       if (c.kind === 'bullet' && re.test(text)) text = text.replace(re, '');
@@ -834,11 +938,16 @@ function downloadFinal(v) {
 
 function decisionsJson(v) {
   const d = decisions[v];
-  const pick = keepFlag => DATA.variants[v].changes
-    .filter(c => (d[c.id] !== false) === keepFlag)
-    .map(c => ({ id: c.id, section: c.section, summary: c.plain.slice(0, 90) }));
+  const row = c => ({ id: c.id, section: c.section, summary: c.plain.slice(0, 90) });
+  const kept = [], dropped = [], edited = [];
+  DATA.variants[v].changes.forEach(c => {
+    const dec = d[c.id];
+    if (dec === false) dropped.push(row(c));
+    else if (typeof dec === 'string') edited.push(Object.assign(row(c), { new_latex: dec }));
+    else kept.push(row(c));
+  });
   return JSON.stringify({ variant: v, source_report: location.pathname,
-    kept: pick(true), dropped: pick(false) }, null, 2);
+    kept, dropped, edited }, null, 2);
 }
 
 function copyDecisions(v) {
@@ -895,8 +1004,12 @@ if (location.protocol === 'http:' || location.protocol === 'https:') {
 
 async function recompilePreview(v) {
   const btn = document.getElementById('recompile-' + v);
-  const dropped = DATA.variants[v].changes
-    .filter(c => decisions[v][c.id] === false).map(c => c.id);
+  const dropped = [], edits = {};
+  DATA.variants[v].changes.forEach(c => {
+    const dec = decisions[v][c.id];
+    if (dec === false) dropped.push(c.id);
+    else if (typeof dec === 'string') edits[c.id] = dec;
+  });
   btn.disabled = true;
   const label = btn.textContent;
   btn.textContent = 'Compiling…';
@@ -904,7 +1017,7 @@ async function recompilePreview(v) {
     const res = await fetch('/recompile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ variant: v, dropped })
+      body: JSON.stringify({ variant: v, dropped, edits })
     });
     const j = await res.json();
     if (!j.ok) { alert('Compile failed:\\n' + (j.error || 'unknown error')); return; }
@@ -1034,12 +1147,32 @@ Object.keys(DATA.variants).forEach(v => refresh(v));</script>
 # ---------------------------------------------------------------------------
 
 
-def build_final_text(variant_text: str, changes: list[dict], dropped_ids: set[int]) -> tuple[str, list[str]]:
-    """Python twin of the in-browser buildFinal(): revert dropped changes."""
+def build_final_text(
+    variant_text: str,
+    changes: list[dict],
+    dropped_ids: set[int],
+    edits: dict[int, str] | None = None,
+) -> tuple[str, list[str]]:
+    """Python twin of the in-browser buildFinal(): revert dropped changes and
+    swap in user-edited wording (`edits`: change id -> replacement raw LaTeX)."""
     text = variant_text
     warnings: list[str] = []
+    edits = edits or {}
     for c in changes:
-        if c["id"] not in dropped_ids:
+        cid = c["id"]
+        if cid not in dropped_ids and cid in edits:
+            var_raw = c["var_raw"]
+            occurrences = text.count(var_raw) if var_raw else 0
+            if occurrences == 1:
+                text = text.replace(var_raw, edits[cid], 1)
+            elif occurrences > 1:
+                warnings.append(
+                    f"Change #{cid}: text appears {occurrences} times — edit skipped to avoid rewriting the wrong bullet; ask the agent to apply it."
+                )
+            else:
+                warnings.append(f"Could not apply the edit for change #{cid}")
+            continue
+        if cid not in dropped_ids:
             continue
         ctype, var_raw, orig_raw = c["type"], c["var_raw"], c["orig_raw"]
         if ctype == "add":
@@ -1148,8 +1281,9 @@ def serve_report(report_path: Path, variants: list[dict], report_data: dict, por
                 req = json.loads(self.rfile.read(length))
                 name = req["variant"]
                 dropped = set(int(i) for i in req.get("dropped", []))
+                edits = {int(k): str(t) for k, t in dict(req.get("edits", {})).items()}
                 vdata = report_data["variants"][name]
-                text, warnings = build_final_text(vdata["variant_text"], vdata["changes"], dropped)
+                text, warnings = build_final_text(vdata["variant_text"], vdata["changes"], dropped, edits)
                 result = compile_preview(variant_dirs[name], text, max_pages)
                 if warnings:
                     result["warnings"] = warnings
