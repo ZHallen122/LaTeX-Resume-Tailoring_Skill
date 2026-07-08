@@ -10,36 +10,6 @@ An agent skill (Claude Code and Codex) for tailoring an existing `resume.tex` to
 
 The skill never edits the source `resume.tex` in place; it works on versioned copies under `resume_variants/`.
 
-## What "stretch" means here
-
-Stretch is stronger *positioning* of the same true facts — reordering, selection, adopting the JD's exact terminology where the underlying work matches, surfacing buried adjacent evidence. It is governed by a quality bar:
-
-- **No-churn rule**: a bullet is only touched when a specific JD requirement and evidence can be named; strong bullets stay byte-identical.
-- **Beats-the-original rule**: a rewrite must add JD-relevant information or sharpen impact while keeping every original metric, tech name, and scope term — otherwise it is reverted.
-- **Interview-defense rule**: every `adjacent` or `needs-confirmation` claim must ship with a one-sentence first-person defense the candidate could actually say in an interview. No defense line, no change.
-- Fabrication (employers, titles, dates, metrics, tools, production scope, ownership) is never allowed in either variant.
-
-## Repository layout
-
-```text
-.
-├── latex-resume-tailoring/
-│   ├── SKILL.md
-│   ├── VERSION
-│   ├── agents/openai.yaml
-│   ├── references/
-│   │   ├── changes_schema.md     # changes.json manifest contract
-│   │   └── review_rubric.md      # ATS / recruiter / senior SDE / integrity rubric
-│   └── scripts/
-│       ├── create_resume_variant.py   # versioned working copies
-│       ├── check_latex_resume.py      # compile + page-count check (JSON)
-│       └── render_review.py           # HTML diff report + manifest validation
-├── tests/
-│   └── test_render_review.py     # parser/validator/revert regression suite
-├── setup.sh
-└── README.md
-```
-
 ## Install
 
 Current skill version: `0.6.0`
@@ -95,6 +65,36 @@ python3 latex-resume-tailoring/scripts/render_review.py \
 ```
 
 `review.html` is fully self-contained (no server, no network) — open it in any browser. The agent serves it live by default (`--serve`, adds recompile-on-drop); the static file is the fallback when a background server can't run.
+
+## What "stretch" means here
+
+Stretch is stronger *positioning* of the same true facts — reordering, selection, adopting the JD's exact terminology where the underlying work matches, surfacing buried adjacent evidence. It is governed by a quality bar:
+
+- **No-churn rule**: a bullet is only touched when a specific JD requirement and evidence can be named; strong bullets stay byte-identical.
+- **Beats-the-original rule**: a rewrite must add JD-relevant information or sharpen impact while keeping every original metric, tech name, and scope term — otherwise it is reverted.
+- **Interview-defense rule**: every `adjacent` or `needs-confirmation` claim must ship with a one-sentence first-person defense the candidate could actually say in an interview. No defense line, no change.
+- Fabrication (employers, titles, dates, metrics, tools, production scope, ownership) is never allowed in either variant.
+
+## Repository layout
+
+```text
+.
+├── latex-resume-tailoring/
+│   ├── SKILL.md
+│   ├── VERSION
+│   ├── agents/openai.yaml
+│   ├── references/
+│   │   ├── changes_schema.md     # changes.json manifest contract
+│   │   └── review_rubric.md      # ATS / recruiter / senior SDE / integrity rubric
+│   └── scripts/
+│       ├── create_resume_variant.py   # versioned working copies
+│       ├── check_latex_resume.py      # compile + page-count check (JSON)
+│       └── render_review.py           # HTML diff report + manifest validation
+├── tests/
+│   └── test_render_review.py     # parser/validator/revert regression suite
+├── setup.sh
+└── README.md
+```
 
 ## Template compatibility
 
