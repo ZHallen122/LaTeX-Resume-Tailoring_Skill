@@ -5,7 +5,7 @@ An agent skill (Claude Code and Codex) for tailoring an existing `resume.tex` to
 - Every edit must be declared in a `changes.json` manifest: which bullet changed, which JD requirement it serves, what evidence backs it, and its risk level (`verified` / `adjacent` / `needs-confirmation`).
 - `render_review.py` cross-checks the manifest against the actual file diff and renders a single self-contained `review.html`: per-bullet before/after with word-level highlighting, rationale and risk badges on every change, a needs-confirmation checklist, JD keyword coverage, and the list of bullets kept verbatim.
 - The report is interactive: each change has a **Keep / Drop** toggle. Drop the changes you dislike and download a final `resume.tex` with them reverted to the original wording — built entirely in the browser, no server. Or copy the decisions JSON back to the agent to apply, recompile, and re-review.
-- The compiled result is visible in the page: when variant PDFs exist (and `pdftoppm` is installed), the report embeds original-vs-tailored page images side by side. With `render_review.py ... --serve`, a **Recompile preview** button appears — drop changes, click, and the local server recompiles and refreshes the preview in seconds. No Overleaf round-trip.
+- The compiled result is visible in the page: when variant PDFs exist (and `pdftoppm` is installed), the report embeds original-vs-tailored page images side by side. The agent serves the report live by default (`render_review.py ... --serve`), which adds a **Recompile preview** button — drop changes, click, and the local server recompiles and refreshes the preview in seconds. No Overleaf round-trip.
 - Any edit the manifest does not explain is flagged as an **unexplained change** (exit code 3). The agent must declare it honestly or revert it before presenting results. Silent synonym-shuffling is treated as a bug.
 
 The skill never edits the source `resume.tex` in place; it works on versioned copies under `resume_variants/`.
@@ -76,7 +76,7 @@ Asking for a "fake" or inflated resume produces the stretch variant instead: the
 4. Edits under the quality bar (no-churn, beats-the-original, anti-pattern list).
 5. Writes `changes.json` per variant (see `references/changes_schema.md`).
 6. Compiles both variants and checks the page limit (`check_latex_resume.py`).
-7. Runs `render_review.py`; re-edits until there are zero unexplained changes.
+7. Runs `render_review.py`; re-edits until there are zero unexplained changes, then serves the report live (`--serve`, background) and hands over the URL.
 8. Reviews from four angles (ATS / recruiter / senior SDE / integrity) and recommends what to submit.
 9. Returns paths (original, variants, PDFs, `review.html`), change counts, keyword gaps, and the recommendation.
 
@@ -94,7 +94,7 @@ python3 latex-resume-tailoring/scripts/render_review.py \
   --original main.tex --variant <strict-dir> --variant <stretch-dir>
 ```
 
-`review.html` is fully self-contained (no server, no network) — open it in any browser.
+`review.html` is fully self-contained (no server, no network) — open it in any browser. The agent serves it live by default (`--serve`, adds recompile-on-drop); the static file is the fallback when a background server can't run.
 
 ## Template compatibility
 

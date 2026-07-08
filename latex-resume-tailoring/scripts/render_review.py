@@ -1157,8 +1157,10 @@ def serve_report(report_path: Path, variants: list[dict], report_data: dict, por
                 result = {"ok": False, "error": str(exc)}
             self._send(200, json.dumps(result).encode("utf-8"), "application/json")
 
+    # port 0 → the OS assigns a free port; read the real one back after bind
     server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"Live preview server: http://127.0.0.1:{port}/  (Ctrl+C to stop)", file=sys.stderr)
+    actual_port = server.server_address[1]
+    print(f"Live preview server: http://127.0.0.1:{actual_port}/  (Ctrl+C to stop)", file=sys.stderr)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -1194,10 +1196,10 @@ def main() -> int:
         "--serve",
         type=int,
         nargs="?",
-        const=8437,
+        const=0,
         default=None,
         metavar="PORT",
-        help="After writing the report, serve it on 127.0.0.1:PORT with live recompile-on-drop (default port 8437)",
+        help="After writing the report, serve it on 127.0.0.1:PORT with live recompile-on-drop (omit PORT to auto-pick a free port; the URL is printed on startup)",
     )
     args = parser.parse_args()
 
