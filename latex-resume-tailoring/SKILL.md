@@ -1,189 +1,117 @@
 ---
 name: latex-resume-tailoring
-description: LaTeX-first resume tailoring for a target job description using an existing resume.tex and a verified career vault or master resume. Use when Codex needs to analyze a JD, produce strict and aggressive-but-verifiable resume variants, patch existing LaTeX without changing its template or style, compile/check one-page fit, and produce ATS, recruiter, senior engineer, and integrity reviews.
+description: LaTeX-first resume tailoring for a target job description using an existing resume.tex. Use when the agent needs to analyze a JD, produce strict and stretch resume variants with a machine-checked change manifest, patch existing LaTeX without changing its template, compile and check one-page fit, and generate an HTML before/after review report. Works in Claude Code and Codex.
 ---
 
 # LaTeX Resume Tailoring
 
 ## Overview
 
-Tailor an existing LaTeX resume to a target role while preserving the user's original structure, formatting, tone, and factual boundaries. Treat the career vault/master resume as the source of truth for hard facts: employers, roles, dates, education, credentials, projects, technologies, metrics, scale, ownership, and responsibilities.
+Tailor an existing LaTeX resume to a target role while preserving the user's template, tone, and factual boundaries. The workflow is **manifest-driven**: every edit must be declared in a `changes.json` next to the edited file, citing the JD requirement it serves, the evidence behind it, and a risk level. `scripts/render_review.py` cross-checks the manifest against the real diff and renders an HTML before/after report; any undeclared edit is flagged and must be declared or reverted. Silent rewording is a bug, not a style.
 
-By default, produce two resume variants:
+Produce two variants by default:
 
-- Strict variant: the current conservative style. Only include claims directly supported by the verified career vault.
-- Stretch variant: a more aggressive positioning pass. It may promote adjacent evidence, choose stronger language, reorder emphasis, and include claims that are plausible only when explicitly marked as "needs confirmation" in the review, but it must not fabricate hard facts or claims the user could not defend in an interview.
+- **Strict** — only claims directly supported by the vault/resume. The safe submission.
+- **Stretch** — stronger *positioning* of the same true facts: reordering, selection, JD terminology, surfacing buried evidence. Not a license to reword everything.
 
-Never edit the user's original resume file. Always create versioned copies first, then edit only those copies.
+Never edit the user's original resume file. Always create versioned copies first.
 
 ## Required Inputs
 
-Collect or locate these before editing:
+- Target job description (text or URL — fetch it if given a URL).
+- Existing resume `.tex` file.
+- Career vault / master resume when available. **If the user has no vault, do not block:** treat the resume itself as the fact boundary, say so in the final report, and keep every claim within what the resume already states. Ask (once, via a structured question tool if available) whether they have extra verified material; proceed either way.
+- Optional constraints: page limit (default: keep the current page count), protected sections, emphasis preferences.
 
-- Target job description.
-- Existing `resume.tex`.
-- Verified career vault, master resume, or equivalent source of real experience.
-- Optional constraints: page limit, preferred projects, target roles to emphasize, sections that must not change.
-
-If any required input is missing, ask for it before editing or proceed only with an explicit limitation in the final risk report.
-
-## Missing Input Questions
-
-Before analyzing or editing, check whether the user provided all required inputs. If not, ask concise questions and wait when the missing input would change the resume patch.
-
-Prefer a structured user-question tool when the host exposes one, such as `AskUserQuestion`, `request_user_input`, or an equivalent UI question tool. Use that tool instead of burying the request inside a long prose response. If no structured question tool is available, ask a short plain-text question.
-
-When multiple required inputs are missing, ask for them in one clear question with a short checklist. Do not ask more than three questions at once.
-
-Ask for:
-
-- Missing JD: "Please provide the target job description or a link/text for the role."
-- Missing `resume.tex`: "Please provide the existing LaTeX resume file or paste the current `resume.tex` content."
-- Missing career vault/master resume: "Please provide your verified career vault, master resume, or factual experience notes. I need this to avoid inventing experience, metrics, technologies, or responsibilities."
-- Missing constraints when implied: "Should I enforce a one-page limit, and are there projects or roles you want emphasized or protected?"
-
-Do not make factual resume edits without a career vault or equivalent verified source. If the user only wants a high-level review of the existing resume against a JD, proceed without editing and label the output as review-only with unsupported gaps.
-
-If the user asks for a "fake", "deceptive", "lying", or similarly inflated resume version, do not generate fabricated resume content. Instead, generate the Stretch variant above and explain that it is the most aggressive version that stays defensible: it can sharpen framing, surface adjacent experience, and flag optional claims for user confirmation, but it cannot invent credentials, employers, dates, metrics, tools, or production scope.
+If the user asks for a "fake" or inflated resume, do not fabricate. Produce the stretch variant and explain it is the strongest defensible version.
 
 ## Workflow
 
-### 1. Analyze the Job Description
+### 1. Analyze the JD into numbered requirements
 
-Extract:
+Extract requirements and give each a stable id (`R1..Rn` required, `P1..Pn` preferred), plus likely ATS keywords and the role's scan priorities. These ids are what every change will cite, so keep them concrete ("R5: distributed systems", not "R5: strong engineer").
 
-- Required skills, languages, frameworks, platforms, credentials, and years/seniority signals.
-- Preferred skills and domain keywords.
-- Role focus: backend, frontend, full stack, ML, data, infrastructure, security, product, leadership, etc.
-- Recruiter scan priorities and likely ATS search terms.
-- Evidence the resume should show, such as scale, ownership, reliability, customer impact, collaboration, or system design.
+### 2. Build the truth map
 
-Keep the JD analysis separate from the resume edit so keyword choices are traceable.
+For each requirement: **direct match** (evidence exists verbatim), **adjacent match** (real work that maps onto it with honest rewording), **gap** (no evidence — report it, never fill it). Note the exact resume/vault line that backs each match; you will paste it into `evidence` fields later.
 
-### 2. Build a Truth Map
-
-Map JD requirements to verified vault evidence before rewriting:
-
-- Direct match: the vault explicitly supports the technology, responsibility, domain, metric, or project.
-- Adjacent match: the vault supports a related skill, but wording must stay honest.
-- Gap: no verified evidence exists. Do not invent content; report the gap.
-- Confirmation candidate: the claim is plausible based on the resume/vault context but not verified. Use only in the Stretch variant when it is clearly identified in the final review as requiring user confirmation before submission.
-
-Never add unverified employers, titles, dates, degrees, certifications, tools, metrics, leadership scope, production usage, user counts, revenue, latency, availability, or security/compliance claims.
-
-### 3. Create Versioned Working Copies
-
-Before any resume edit, copy the source LaTeX file into generated variant folders and treat those copies as the only editable resumes for the task. Do not patch, format, compile in place, or otherwise mutate the original `resume.tex`, even if the user asks for a single tailored version.
-
-Use the bundled helper when available:
+### 3. Create versioned working copies
 
 ```bash
-python3 latex-resume-tailoring/scripts/create_resume_variant.py path/to/resume.tex --label company-role-strict
-python3 latex-resume-tailoring/scripts/create_resume_variant.py path/to/resume.tex --label company-role-stretch
+python3 scripts/create_resume_variant.py path/to/resume.tex --label <company-role>-strict
+python3 scripts/create_resume_variant.py path/to/resume.tex --label <company-role>-stretch
 ```
 
-The helper creates one folder per variant:
+This creates `resume_variants/<YYYYMMDD>-<label>-vNN/resume.tex` next to the source. Edit only these copies. Use `--copy-assets` when the template needs sibling files.
 
-```text
-<resume-dir>/resume_variants/<YYYYMMDD>-<label>-strict-vNN>/resume.tex
-<resume-dir>/resume_variants/<YYYYMMDD>-<label>-stretch-vNN>/resume.tex
-```
+### 4. Edit under the bullet quality bar
 
-Rules:
+Preserve the template: section order, macros, packages, spacing, escaping style (`\&`, `\%`, `\textbar{}`, ...), bullet syntax, tone, density.
 
-- Put every generated resume variant under `resume_variants/` next to the source resume unless the user explicitly chooses another output directory.
-- Use a short slug from the target company, role, or user-provided label, suffixed with `strict` and `stretch`. If no label is available, use `target-role-strict` and `target-role-stretch`.
-- Increment `vNN` automatically when a folder for the same date and label already exists.
-- Preserve any sibling files needed by the LaTeX template by copying the whole source directory only when compilation requires local assets; otherwise copy just the `.tex` file.
-- Keep the original file path and both generated variant paths in the final response.
+**The no-churn rule:** touch a unit (bullet, skills line, header) only when you can name (a) the JD requirement it serves and (b) the evidence behind the new wording. A bullet that is already strong and JD-relevant stays **byte-identical**. Typical good tailoring touches 30–60% of bullets; touching 100% is a red flag that you are churning, not tailoring.
 
-### 4. Patch the Working Copies
+**Every rewritten bullet must beat the original**, meaning it adds JD-relevant information (a requirement now evidenced, a keyword now natural, a scope now explicit) or sharpens impact — while keeping every verified metric, technology, and scope term from the original. If your rewrite is merely different rather than better, revert it.
 
-Edit only the versioned working copies. Preserve:
+Bullet shape: action verb + what was built (specific tech) + how (method/architecture) + outcome (metric/scope) — but only components the evidence supports.
 
-- Section order, custom commands, packages, spacing conventions, bullet syntax, and typography.
-- The user's existing tone and density.
-- Macros and escaping style, including how the file represents `&`, `%`, `_`, `#`, and links.
+**Anti-patterns (all count as churn — revert on sight):**
+- Synonym shuffling: "Built" → "Developed", "improving" → "enhancing" with no information gained.
+- Dropping or weakening a metric, tech name, or scope that was in the original.
+- Verb inflation ("led", "owned", "architected") beyond the evidenced responsibility level.
+- Rewording bullets unrelated to any JD requirement.
+- Keyword stuffing: JD terms bolted onto bullets whose work doesn't evidence them.
 
-Patch order:
+**Strict variant:** direct matches only; every change `risk: verified`.
 
-1. Strict variant: prefer content edits before format edits. Reorder or rewrite bullets only when doing so improves JD relevance, clarity, scanability, or truthful keyword coverage. Keep bullets specific: action, technical method, scope, and result when directly supported by the vault.
-2. Stretch variant: start from the strict variant's strongest content, then push phrasing and selection further while staying defensible. Use adjacent matches more boldly, surface transferable evidence, and choose interview-ready wording. Do not add invented hard facts. If a useful claim depends on a reasonable but unverified assumption, include it only when it can be flagged as "needs confirmation" in the final review and can be removed without breaking the resume.
+**Stretch variant** starts from strict and pushes *positioning*, not fiction:
+- Reorder bullets/sections so JD-matching evidence is read first.
+- Adopt the JD's exact terminology where the underlying fact matches (built a daemon with RPC channels and task persistence → "distributed" is fair; a class project → "production" is not).
+- Surface adjacent or buried evidence into prominent bullets, tagged `risk: adjacent`.
+- A claim that is plausible but unverified may appear **only** with `risk: needs-confirmation` and only if removing it later won't break the resume.
+- Every `adjacent` / `needs-confirmation` change must include a `defense`: one first-person sentence the user could say in an interview to back it. **If you cannot write that sentence, the change is not allowed.** This is the stretch quality bar — impressive means "survives a follow-up question", not "sounds bigger".
 
-The Stretch variant can:
+Stretch may never invent employers, titles, dates, degrees, certifications, tools, metrics, users, revenue, production deployment, compliance posture, or leadership scope, and may never convert exposure into ownership or coursework into professional experience.
 
-- Reframe adjacent experience using JD language when the underlying work is real.
-- Move verified but under-emphasized technologies or domains into stronger bullets.
-- Use stronger verbs such as "led", "owned", "designed", or "launched" only when the vault supports that responsibility level.
-- Add a softer claim such as "exposure to", "worked with", "built toward", or "partnered on" when the vault supports partial involvement.
+### 5. Write the change manifest
 
-The Stretch variant cannot:
+For each variant, write `changes.json` next to its `resume.tex` following `references/changes_schema.md`. One entry per edited unit: `section`, `type`, `before`/`after` (copied from the actual files), `jd` ids, `evidence`, `risk`, `rationale`, `defense`. Also record `jd_requirements` and the `keywords` coverage table (report gaps honestly).
 
-- Invent employers, titles, dates, degrees, certifications, tools, metrics, projects, customers, funding, revenue, user counts, production deployment, compliance posture, security ownership, or leadership scope.
-- Convert exposure into ownership, coursework into professional experience, toy projects into production systems, or adjacent skills into exact tool claims.
-- Hide unsupported claims by putting them in a skills list.
-
-### 5. Compile and Check Fit
-
-Run the helper after each meaningful patch for both variants:
+### 6. Compile and check fit
 
 ```bash
-python3 latex-resume-tailoring/scripts/check_latex_resume.py path/to/resume_variants/YYYYMMDD-label-strict-vNN/resume.tex --max-pages 1
-python3 latex-resume-tailoring/scripts/check_latex_resume.py path/to/resume_variants/YYYYMMDD-label-stretch-vNN/resume.tex --max-pages 1
+python3 scripts/check_latex_resume.py <variant>/resume.tex --max-pages 1
 ```
 
-If the resume overflows, compress content in this order:
+On overflow, compress in order: drop least-relevant bullets → tighten wording → only then minimal spacing tweaks (declare them as `type: style`). If LaTeX is unavailable, say so and continue.
 
-- Remove or shorten the least relevant bullets.
-- Tighten wording and remove filler.
-- Prefer stronger project/skill selection.
-- Only then adjust LaTeX spacing, and keep changes minimal and consistent with the original file.
+### 7. Render and validate the review report
 
-If LaTeX is unavailable, still patch the files and report that compile/page validation could not be completed.
+```bash
+python3 scripts/render_review.py --original path/to/resume.tex \
+  --variant <strict-dir> --variant <stretch-dir>
+```
 
-### 6. Review From Four Angles
+Compile the original resume once too (`check_latex_resume.py path/to/resume.tex`) so the report can embed a side-by-side compiled preview: when `<dir>/build/resume.pdf` exists and `pdftoppm` is available, each variant panel shows the original and tailored PDFs as images — the user reviews the visual result in the page, no Overleaf needed.
 
-Read `references/review_rubric.md` when producing the final review or when judging borderline changes.
+For a live, Overleaf-like loop, run the same command with `--serve` (in the background — it blocks) and give the user the URL:
 
-Always include:
+```bash
+python3 scripts/render_review.py --original ... --variant ... --variant ... --serve 8437
+# → http://127.0.0.1:8437/
+```
 
-- ATS reviewer: keyword coverage, role alignment, parsing friendliness.
-- HR recruiter: quick-scan match, title/seniority fit, clarity of impact.
-- Senior SDE interviewer: technical credibility, system/project depth, ownership, likely interview signal.
-- Quality and integrity review: hallucination risk, keyword stuffing risk, format drift risk, unsupported claims, remaining JD gaps.
+Served over HTTP, every panel gains a **Recompile preview** button: the user drops changes and clicks it, and the server reverts those edits, recompiles, and swaps in the fresh preview with a page-count status — no download round-trip.
 
-For dual-output tailoring, review both variants and include a short comparison:
+The script writes `resume_variants/review.html` and prints a JSON summary. **Exit code 3 means unexplained changes exist** — edits in the file that no manifest entry declares. Fix each one by either adding an honest manifest entry or reverting the edit, then re-run until the summary says `"ok": true`. Do not present results to the user while unexplained changes remain.
 
-- Strict variant: safest submission profile and remaining gaps.
-- Stretch variant: expected recruiter/ATS upside, specific claims that require user confirmation, and exact claims to remove if the user cannot defend them.
-- Recommendation: which version to submit and why.
+Open the report (or give its absolute path) — it shows per-bullet before/after with word-level highlights, rationale, risk badges, the needs-confirmation checklist, keyword coverage, and what was kept verbatim.
 
-### 7. Open the Review Cockpit When Helpful
+The report is also interactive: every change card has a **Keep / Drop** toggle. The user can drop any change they dislike and click "Download final resume.tex" to get a file with dropped changes reverted to the original wording (built entirely in the browser), or "Copy decisions JSON" to hand their selections back to you. **When the user pastes a decisions JSON**, apply it server-side: revert each dropped change in the variant's `resume.tex`, delete the corresponding `changes.json` entries, recompile, and re-run `render_review.py` so the report matches the final file.
 
-The installed skill includes a bundled static frontend at `resume-review-ui/index.html`, next to this `SKILL.md`. Use it when the user asks to see the result in a browser, asks for a visual review, or would benefit from comparing the original and tailored LaTeX without reading raw source.
+### 8. Review from four angles
 
-No dev server or build step is required. Open the local HTML file directly when the host environment allows browser or file opening. If browser automation is available, load the page, paste the JD, career vault, unchanged original resume, and selected tailored resume variant into the fields, then run the review. If opening local files is not available, return the absolute path to `resume-review-ui/index.html` so the user can open it.
+Read `references/review_rubric.md`. Cover ATS, recruiter, senior-engineer, and integrity perspectives for both variants, then recommend: strict, stretch after confirming flagged claims, or strict plus selected stretch edits.
 
-### 8. Final Response
+### 9. Final response
 
-Return or summarize:
-
-- Original `resume.tex` path, clearly labeled as unchanged.
-- Strict variant `resume.tex` path.
-- Stretch variant `resume.tex` path.
-- Compiled PDF paths when compilation succeeds.
-- Review cockpit path, and whether it was opened or populated when requested.
-- Change summary grouped by section and variant.
-- ATS, HR recruiter, and senior SDE review result for both variants.
-- Risk report covering hallucination risk, keyword stuffing risk, format drift risk, unsupported claims, claims requiring confirmation, and remaining JD gaps.
-- Compile/page-check result for both variants, including page count and any LaTeX warnings that matter.
-- Submission recommendation: strict, stretch after confirmation, or strict plus targeted manual follow-up.
-
-## Editing Standards
-
-- Keep changes narrowly tied to JD requirements and verified vault evidence.
-- Use natural keywords inside truthful bullets; do not create keyword lists that feel disconnected from the work.
-- Do not edit the source resume, replace the user's template, regenerate the resume from scratch, or normalize style across the file unless asked.
-- Avoid vague inflation such as "optimized systems" or "owned architecture" unless the vault supports what was optimized, owned, and measured.
-- Preserve one-page constraints unless the user explicitly allows more pages.
-- Do not comply with requests to fabricate resume facts. Convert those requests into the Stretch variant workflow and keep unsupported hard facts in the risk report, not in the resume.
+Report: original path (unchanged), both variant paths, PDF paths and page counts, the `review.html` path, per-variant change counts (declared / kept verbatim / needs-confirmation), keyword gaps, the four-angle review, and the submission recommendation. If no vault was provided, state that the resume itself was the fact boundary.
