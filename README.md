@@ -1,275 +1,127 @@
 # LaTeX Resume Tailoring Skill
 
-LaTeX Resume Tailoring is a Codex skill for tailoring an existing `resume.tex` to a target job description. It preserves the user's resume structure and style, uses a verified career vault as the source of truth for hard facts, and produces strict plus aggressive-but-verifiable resume variants with ATS, recruiter, senior engineering, and integrity reviews.
+An agent skill (Claude Code and Codex) for tailoring an existing `resume.tex` to a target job description. It preserves the resume's template and factual boundaries, produces **strict** and **stretch** variants, and — the core of v0.2 — makes every edit **observable and accountable**:
 
-The skill never edits the user's source `resume.tex` in place. It first creates versioned working copies under `resume_variants/`, then patches and compiles those copies so users can compare a conservative submission with a stronger stretch submission.
+- Every edit must be declared in a `changes.json` manifest: which bullet changed, which JD requirement it serves, what evidence backs it, and its risk level (`verified` / `adjacent` / `needs-confirmation`).
+- `render_review.py` cross-checks the manifest against the actual file diff and renders a single self-contained `review.html`: per-bullet before/after with word-level highlighting, rationale and risk badges on every change, a needs-confirmation checklist, JD keyword coverage, and the list of bullets kept verbatim.
+- The report is interactive: each change has a **Keep / Drop** toggle. Drop the changes you dislike and download a final `resume.tex` with them reverted to the original wording — built entirely in the browser, no server. Or copy the decisions JSON back to the agent to apply, recompile, and re-review.
+- The compiled result is visible in the page: when variant PDFs exist (and `pdftoppm` is installed), the report embeds original-vs-tailored page images side by side. With `render_review.py ... --serve`, a **Recompile preview** button appears — drop changes, click, and the local server recompiles and refreshes the preview in seconds. No Overleaf round-trip.
+- Any edit the manifest does not explain is flagged as an **unexplained change** (exit code 3). The agent must declare it honestly or revert it before presenting results. Silent synonym-shuffling is treated as a bug.
 
-The project also includes a small static review cockpit for reading LaTeX resume content in a more human-friendly way before or after tailoring.
+The skill never edits the source `resume.tex` in place; it works on versioned copies under `resume_variants/`.
 
-## What It Does
+## What "stretch" means here
 
-- Analyzes a target job description for required skills, preferred skills, seniority signals, domain keywords, and likely recruiter/ATS priorities.
-- Matches the JD against a verified career vault or master resume.
-- Creates strict and stretch versioned copies of the existing `resume.tex`, then patches those copies instead of generating a new template or mutating the original.
-- Keeps the strict variant directly supported by the vault.
-- Makes the stretch variant more aggressive while still defensible: stronger framing, adjacent evidence, and clearly flagged claims that need user confirmation.
-- Avoids invented experience, metrics, tools, responsibilities, dates, credentials, production scope, or ownership claims.
-- Compiles both resumes to PDF and checks page count when a local LaTeX environment is available.
-- Reports ATS, HR recruiter, Senior SDE, and integrity review results for both variants.
-- Flags hallucination risk, keyword stuffing risk, format drift risk, claims requiring confirmation, and remaining JD gaps.
+Stretch is stronger *positioning* of the same true facts — reordering, selection, adopting the JD's exact terminology where the underlying work matches, surfacing buried adjacent evidence. It is governed by a quality bar:
 
-## Repository Layout
+- **No-churn rule**: a bullet is only touched when a specific JD requirement and evidence can be named; strong bullets stay byte-identical.
+- **Beats-the-original rule**: a rewrite must add JD-relevant information or sharpen impact while keeping every original metric, tech name, and scope term — otherwise it is reverted.
+- **Interview-defense rule**: every `adjacent` or `needs-confirmation` claim must ship with a one-sentence first-person defense the candidate could actually say in an interview. No defense line, no change.
+- Fabrication (employers, titles, dates, metrics, tools, production scope, ownership) is never allowed in either variant.
+
+## Repository layout
 
 ```text
 .
 ├── latex-resume-tailoring/
 │   ├── SKILL.md
+│   ├── VERSION
 │   ├── agents/openai.yaml
-│   ├── references/review_rubric.md
+│   ├── references/
+│   │   ├── changes_schema.md     # changes.json manifest contract
+│   │   └── review_rubric.md      # ATS / recruiter / senior SDE / integrity rubric
 │   └── scripts/
-│       ├── check_latex_resume.py
-│       └── create_resume_variant.py
-├── resume-review-ui/
-│   ├── index.html
-│   ├── styles.css
-│   └── app.js
-├── setup_codex.sh
+│       ├── create_resume_variant.py   # versioned working copies
+│       ├── check_latex_resume.py      # compile + page-count check (JSON)
+│       └── render_review.py           # HTML diff report + manifest validation
+├── tests/
+│   └── test_render_review.py     # parser/validator/revert regression suite
+├── setup.sh
 └── README.md
 ```
 
-## Install For Codex
+## Install
 
-Current skill version: `0.1.1`
-
-Run the setup script from the repository root:
+Current skill version: `0.5.0`
 
 ```bash
-./setup_codex.sh
+./setup.sh                  # installs for both Claude Code and Codex
+./setup.sh --host claude    # ~/.claude/skills/latex-resume-tailoring
+./setup.sh --host codex     # ~/.codex/skills/latex-resume-tailoring
+./setup.sh --upgrade        # replace only if this checkout is newer
+./setup.sh --force          # replace unconditionally
 ```
 
-This installs the skill to:
+Restart the host after installing.
+
+## Usage
+
+```text
+Use the latex-resume-tailoring skill to tailor my resume for this JD.
+JD: https://example.com/jobs/123        (or pasted text)
+resume: ./main.tex
+Career vault: ./career-vault.md         (optional)
+Constraints: one page, keep formatting
+```
+
+If you have no career vault, the skill proceeds with the resume itself as the fact boundary and says so in the final report — it will not block, and it will not invent anything beyond what the resume already states.
+
+Asking for a "fake" or inflated resume produces the stretch variant instead: the strongest version that survives an interview follow-up question, with unverified claims routed to the confirmation checklist.
+
+## Workflow (what the agent does)
+
+1. Analyzes the JD into numbered requirements (`R1..`, `P1..`) and ATS keywords.
+2. Builds a truth map: direct match / adjacent match / gap per requirement.
+3. Creates versioned copies: `resume_variants/<YYYYMMDD>-<label>-vNN/resume.tex`.
+4. Edits under the quality bar (no-churn, beats-the-original, anti-pattern list).
+5. Writes `changes.json` per variant (see `references/changes_schema.md`).
+6. Compiles both variants and checks the page limit (`check_latex_resume.py`).
+7. Runs `render_review.py`; re-edits until there are zero unexplained changes.
+8. Reviews from four angles (ATS / recruiter / senior SDE / integrity) and recommends what to submit.
+9. Returns paths (original, variants, PDFs, `review.html`), change counts, keyword gaps, and the recommendation.
+
+## Scripts
 
 ```bash
-${CODEX_HOME:-$HOME/.codex}/skills/latex-resume-tailoring
+# versioned working copy
+python3 latex-resume-tailoring/scripts/create_resume_variant.py main.tex --label uber-swe1-strict
+
+# compile + page check (exit 0 ok / 1 compile failed / 2 over page limit)
+python3 latex-resume-tailoring/scripts/check_latex_resume.py <variant>/resume.tex --max-pages 1
+
+# HTML review + manifest validation (exit 0 clean / 3 unexplained changes)
+python3 latex-resume-tailoring/scripts/render_review.py \
+  --original main.tex --variant <strict-dir> --variant <stretch-dir>
 ```
 
-It also installs the static review cockpit to:
+`review.html` is fully self-contained (no server, no network) — open it in any browser.
+
+## Template compatibility
+
+The parser targets standard LaTeX: `\item` bullets, `\section`-style headings, `\\` line breaks. Templates that wrap bullets in custom macros (Jake's Resume `\resumeItem`, moderncv `\cvitem`/`\cventry`) degrade gracefully: each entry is still extracted as a comparable unit, so diffing, manifest validation, and keep/drop all keep working — the entry is just labeled as a line rather than a bullet. Prose wrapped across source lines is merged into one unit, so a single-sentence edit never shows up as multiple false diffs. CRLF files are normalized on read. Worst case for an exotic template is a cosmetic one (uglier extracted text), never a corrupted resume: editing, compiling, and exporting don't go through the parser.
+
+## Tests
 
 ```bash
-${CODEX_HOME:-$HOME/.codex}/skills/latex-resume-tailoring/resume-review-ui/index.html
+python3 -m unittest discover -s tests -v
 ```
 
-If the skill is already installed and you want to replace it:
-
-```bash
-./setup_codex.sh --force
-```
-
-If the skill is already installed and you only want to update when this checkout has a newer version:
-
-```bash
-./setup_codex.sh --upgrade
-```
-
-Check the version in this checkout:
-
-```bash
-./setup_codex.sh --version
-```
-
-Restart Codex after installation if it was already running.
+Covers unit extraction across template styles (standard, Jake's Resume, moderncv), paragraph merging, CRLF handling, anti-churn validation (undeclared synonym swaps and metric tampering are flagged), keep/drop revert round-trips, and keyword verification.
 
 ## Requirements
 
-For resume analysis and LaTeX editing:
-
-- Codex
-- The target JD
-- The user's existing `resume.tex`
-- A verified career vault, master resume, or factual experience notes
-
-For PDF compilation and one-page checks:
-
-- `latexmk` recommended
-- `pdflatex` supported as fallback
-- `xelatex` and `lualatex` supported when selected explicitly
-- `pdfinfo` recommended for page counting
-
-The skill can still edit and review `resume.tex` without a local LaTeX installation. It will report that PDF compile/page validation could not be completed.
-
-Common install options:
+- Python 3.10+
+- For PDF checks: `latexmk` or `pdflatex`, and `pdfinfo` (poppler-utils) recommended
 
 ```bash
-# macOS
-brew install --cask mactex
-
 # Ubuntu/Debian
 sudo apt-get install texlive-latex-recommended texlive-latex-extra latexmk poppler-utils
+# macOS
+brew install --cask mactex
 ```
 
-`MacTeX` is large. `BasicTeX` plus `latexmk` can be enough for many resume templates, but some templates need extra packages.
+Without a LaTeX toolchain the skill still edits, validates, and renders the review; it reports that PDF validation was skipped.
 
-## Basic Usage
+## Integrity rules
 
-After installing, invoke the skill in Codex:
-
-```text
-Use $latex-resume-tailoring to tailor my resume.tex for this job description using my career vault. Generate strict and stretch versions. Keep both one page.
-```
-
-Provide or point Codex to:
-
-```text
-JD: <paste the target job description>
-resume.tex: ./resume.tex
-Career vault: ./career-vault.md
-Constraints: one page, emphasize backend/platform work, preserve current formatting
-```
-
-The skill will ask for missing required inputs. In particular, it must ask for a career vault or equivalent verified source before making factual resume edits.
-
-If you ask for a fake, deceptive, or inflated resume, the skill should not fabricate credentials or experience. It will instead produce the stretch variant: the strongest version that remains interview-defensible, with any unverified but plausible claims called out for confirmation before submission.
-
-## Expected Workflow
-
-1. Codex checks whether JD, `resume.tex`, and career vault are available.
-2. Codex asks concise follow-up questions for missing materials.
-3. Codex analyzes the JD and identifies role priorities.
-4. Codex builds a truth map from JD requirements to verified career evidence.
-5. Codex creates strict and stretch working copies under `resume_variants/<YYYYMMDD>-<label>-strict-vNN>/resume.tex` and `resume_variants/<YYYYMMDD>-<label>-stretch-vNN>/resume.tex`.
-6. Codex patches both copied LaTeX resumes without changing the template.
-7. Codex compiles both PDFs and checks the page limit when LaTeX tools are installed.
-8. Codex compresses or trims content if either resume exceeds the page limit.
-9. Codex returns the unchanged source path, both updated variant paths, PDF paths when available, change summary, reviews, risk report, and a submission recommendation.
-
-If the user only wants a high-level review and has not provided a career vault, the skill should proceed as review-only and label unsupported gaps clearly.
-
-## Versioned Resume Copies
-
-Create editable resume variants before tailoring:
-
-```bash
-python3 latex-resume-tailoring/scripts/create_resume_variant.py path/to/resume.tex --label company-role-strict
-python3 latex-resume-tailoring/scripts/create_resume_variant.py path/to/resume.tex --label company-role-stretch
-```
-
-The helpers create:
-
-```text
-path/to/resume_variants/YYYYMMDD-company-role-strict-v01/resume.tex
-path/to/resume_variants/YYYYMMDD-company-role-stretch-v01/resume.tex
-```
-
-Run it again with the same label on the same day and it creates `v02`, `v03`, and so on. Use `--copy-assets` when the LaTeX template depends on sibling images, style files, fonts, or other local assets.
-
-## Compile And Page Check Script
-
-The helper script compiles a LaTeX resume and reports status as JSON:
-
-```bash
-python3 latex-resume-tailoring/scripts/check_latex_resume.py path/to/resume.tex --max-pages 1
-```
-
-Options:
-
-```bash
-python3 latex-resume-tailoring/scripts/check_latex_resume.py path/to/resume.tex \
-  --max-pages 1 \
-  --engine auto \
-  --out-dir path/to/build
-```
-
-Supported engines:
-
-- `auto`: use `latexmk` if available, otherwise `pdflatex`
-- `pdflatex`
-- `xelatex`
-- `lualatex`
-
-Exit codes:
-
-- `0`: compiled and within page limit
-- `1`: compile failed or no PDF was produced
-- `2`: compiled but exceeded the page limit
-
-## Review Cockpit
-
-The optional static frontend helps users review LaTeX resume content without reading raw LaTeX:
-
-```text
-resume-review-ui/index.html
-```
-
-When installed with `./setup_codex.sh`, the same cockpit is bundled inside the installed skill:
-
-```text
-${CODEX_HOME:-$HOME/.codex}/skills/latex-resume-tailoring/resume-review-ui/index.html
-```
-
-Open that file in a browser. No dev server or build step is required.
-
-After Codex creates tailored resume variants, it can open this local page when the host environment allows browser/file opening. With browser automation available, Codex can load the page, paste the JD, career vault, original resume, and tailored resume into the fields, then run the review view for the user.
-
-The cockpit supports:
-
-- JD input
-- Career vault input
-- Original `resume.tex` input
-- Current/tailored `resume.tex` input
-- Readable comparison view with green highlights for additions and changed words
-- Human-readable resume preview
-- Keyword coverage view
-- ATS review
-- HR recruiter review
-- Senior SDE review
-- Integrity review
-- Patch idea view
-- Copyable review report
-
-The current UI is heuristic and runs fully in the browser. It does not call an LLM or modify files.
-
-## Integrity Rules
-
-The skill treats the career vault as the source of truth for hard facts. It must not add:
-
-- New employers, roles, titles, or dates
-- New degrees, certifications, or credentials
-- Unverified technologies
-- Unverified metrics
-- Unsupported production, scale, security, compliance, leadership, or ownership claims
-
-When the JD asks for something the vault does not support, the skill reports a remaining gap instead of fabricating evidence.
-
-The stretch variant is intentionally less conservative, but it is not a fake-resume mode. It may sharpen language and surface adjacent experience, but any claim that is not clearly verified must be listed as "needs confirmation" in the final risk report before the user submits it.
-
-## Troubleshooting
-
-If Codex does not find the skill:
-
-1. Confirm it was installed under `${CODEX_HOME:-$HOME/.codex}/skills/latex-resume-tailoring`.
-2. Restart Codex.
-3. Invoke it explicitly with `$latex-resume-tailoring`.
-
-If PDF compilation fails:
-
-1. Run the check script manually.
-2. Confirm `latexmk` or `pdflatex` is installed.
-3. Check whether the resume template needs additional LaTeX packages.
-4. Try a specific engine if the template requires it:
-
-```bash
-python3 latex-resume-tailoring/scripts/check_latex_resume.py resume.tex --engine xelatex
-```
-
-If the resume exceeds one page:
-
-1. Shorten the least relevant bullets.
-2. Remove weaker projects or older details.
-3. Tighten wording.
-4. Adjust spacing only after content edits are not enough.
-
-## Current Limitations
-
-- The review cockpit is a local static prototype and does not persist data.
-- The compile helper depends on local LaTeX tools for PDF generation.
-- The skill can enforce hard-fact boundaries only when the user provides a reliable career vault.
+The vault (or, absent one, the resume itself) is the source of truth for hard facts. The skill must not add employers, roles, dates, degrees, certifications, unverified technologies or metrics, or unsupported production/scale/security/leadership claims. JD requirements without evidence are reported as gaps — visibly, in the keyword table and final report — rather than papered over.
