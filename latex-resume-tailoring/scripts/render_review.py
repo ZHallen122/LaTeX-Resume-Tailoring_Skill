@@ -10,10 +10,16 @@ actual textual diff, and writes a single HTML report with:
 - keyword coverage per variant, auto-verified against the variant text
 - an "unexplained changes" section for any edit missing from the manifest
 
+With --apply-decisions, first applies a Keep/Edit/Drop decisions JSON (exported
+from the report) to its variant: dropped changes are reverted in resume.tex and
+removed from changes.json, edited changes get their new wording in both files,
+the variant is recompiled, and the report is re-rendered from the updated files.
+
 Prints a JSON summary to stdout. Exit codes:
   0  report written, every change is explained by the manifest
   1  input error
   3  report written, but unexplained changes exist (fix the manifest or revert)
+  4  decisions applied, but some were skipped as unsafe (see "applied" in the summary)
 """
 
 from __future__ import annotations
@@ -353,13 +359,27 @@ def find_variant_pdf(variant_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
+def keyword_found(term: str, haystack: str) -> bool:
+    """Whole-token match against normalized (lowercase) text. Plain substring
+    matching lets short terms ride inside unrelated words — "Go" in
+    "algorithms", "Java" in "JavaScript", "R" in almost anything — and fake a
+    verified ✓. A match must not butt against an alphanumeric character, and
+    must not be the bare prefix of a symbol-suffixed token ("C" in "C++"/"C#"
+    is not evidence of C), while symbol terms themselves ("C++", "C#", ".NET",
+    "Node.js") still match exactly."""
+    t = term.lower().strip()
+    if not t:
+        return False
+    return re.search(r"(?<![a-z0-9])" + re.escape(t) + r"(?![a-z0-9+#])", haystack) is not None
+
+
 def verify_keywords(manifest: dict, variant_units: list[Unit]) -> list[dict]:
     haystack = " ".join(u.norm for u in variant_units)
     rows = []
     for kw in manifest["keywords"]:
         term = str(kw.get("term", "")).strip()
         status = kw.get("status", "covered")
-        found = bool(term) and term.lower() in haystack
+        found = keyword_found(term, haystack)
         rows.append(
             {
                 "term": term,
@@ -1152,11 +1172,14 @@ def build_final_text(
     changes: list[dict],
     dropped_ids: set[int],
     edits: dict[int, str] | None = None,
-) -> tuple[str, list[str]]:
+) -> tuple[str, list[str], set[int]]:
     """Python twin of the in-browser buildFinal(): revert dropped changes and
-    swap in user-edited wording (`edits`: change id -> replacement raw LaTeX)."""
+    swap in user-edited wording (`edits`: change id -> replacement raw LaTeX).
+    Returns (text, warnings, failed_ids); failed_ids are the change ids whose
+    drop/edit was skipped as unsafe (ambiguous or missing text)."""
     text = variant_text
     warnings: list[str] = []
+    failed: set[int] = set()
     edits = edits or {}
     for c in changes:
         cid = c["id"]
@@ -1166,10 +1189,12 @@ def build_final_text(
             if occurrences == 1:
                 text = text.replace(var_raw, edits[cid], 1)
             elif occurrences > 1:
+                failed.add(cid)
                 warnings.append(
                     f"Change #{cid}: text appears {occurrences} times — edit skipped to avoid rewriting the wrong bullet; ask the agent to apply it."
                 )
             else:
+                failed.add(cid)
                 warnings.append(f"Could not apply the edit for change #{cid}")
             continue
         if cid not in dropped_ids:
@@ -1182,7 +1207,8 @@ def build_final_text(
             elif var_raw in text:
                 text = text.replace(var_raw + "\n", "", 1) if var_raw + "\n" in text else text.replace(var_raw, "", 1)
             else:
-                warnings.append(f"Could not remove added text for change #{c['id']}")
+                failed.add(cid)
+                warnings.append(f"Could not remove added text for change #{cid}")
         elif ctype == "remove":
             prev_raw = c.get("prev_raw", "")
             occurrences = text.count(prev_raw) if prev_raw else 0
@@ -1190,22 +1216,113 @@ def build_final_text(
                 insert = ("\n  \\item " if c["kind"] == "bullet" else "\n") + orig_raw
                 text = text.replace(prev_raw, prev_raw + insert, 1)
             elif occurrences > 1:
+                failed.add(cid)
                 warnings.append(
-                    f"Change #{c['id']}: anchor text appears {occurrences} times — restore skipped to avoid inserting at the wrong spot; ask the agent to apply it."
+                    f"Change #{cid}: anchor text appears {occurrences} times — restore skipped to avoid inserting at the wrong spot; ask the agent to apply it."
                 )
             else:
-                warnings.append(f"Could not restore removed text for change #{c['id']}")
+                failed.add(cid)
+                warnings.append(f"Could not restore removed text for change #{cid}")
         else:
             occurrences = text.count(var_raw) if var_raw else 0
             if occurrences == 1:
                 text = text.replace(var_raw, orig_raw, 1)
             elif occurrences > 1:
+                failed.add(cid)
                 warnings.append(
-                    f"Change #{c['id']}: text appears {occurrences} times — revert skipped to avoid rewriting the wrong bullet; ask the agent to apply it."
+                    f"Change #{cid}: text appears {occurrences} times — revert skipped to avoid rewriting the wrong bullet; ask the agent to apply it."
                 )
             else:
-                warnings.append(f"Could not revert change #{c['id']}")
-    return text, warnings
+                failed.add(cid)
+                warnings.append(f"Could not revert change #{cid}")
+    return text, warnings, failed
+
+
+def parse_decisions(path: Path) -> dict:
+    """Parse a decisions JSON exported by the report's "Copy decisions JSON" button.
+    Accepts entries as objects with an "id" (the exported shape) or as bare ids."""
+    data = json.loads(read_text(path))
+    if not isinstance(data, dict):
+        raise ValueError("decisions file must be a JSON object")
+
+    def ids_of(key: str) -> set[int]:
+        out = set()
+        for item in data.get(key) or []:
+            out.add(int(item["id"] if isinstance(item, dict) else item))
+        return out
+
+    edits: dict[int, str] = {}
+    for item in data.get("edited") or []:
+        if not isinstance(item, dict) or "id" not in item or "new_latex" not in item:
+            raise ValueError('every "edited" entry must be an object with "id" and "new_latex"')
+        text = str(item["new_latex"]).rstrip()
+        if not text.strip():
+            raise ValueError(f'edited change #{item["id"]}: "new_latex" is empty — drop the change instead')
+        edits[int(item["id"])] = text
+    return {
+        "variant": sanitize_variant_name(data.get("variant", "")),
+        "dropped": ids_of("dropped"),
+        "edits": edits,
+    }
+
+
+def apply_decisions(variant_dir: Path, vdata: dict, dropped: set[int], edits: dict[int, str]) -> dict:
+    """Apply Keep/Edit/Drop decisions to <variant_dir>/resume.tex and changes.json.
+
+    Dropped changes are reverted in the .tex and their manifest entries removed;
+    edited changes get their new wording in the .tex and in the entry's "after".
+    Unsafe applications (ambiguous or missing text) are skipped and reported —
+    their manifest entries stay untouched so re-validation still passes."""
+    changes = vdata["changes"]
+    known_ids = {c["id"] for c in changes}
+    unknown = sorted((dropped | set(edits)) - known_ids)
+    if unknown:
+        raise ValueError(f"decisions reference unknown change ids: {unknown}")
+    # Drop wins over edit for the same id, matching the browser/server behavior.
+    edits = {cid: t for cid, t in edits.items() if cid not in dropped}
+
+    text, warnings, failed = build_final_text(vdata["variant_text"], changes, dropped, edits)
+    applied_drops = sorted(dropped - failed)
+    applied_edits = sorted(set(edits) - failed)
+
+    if applied_drops or applied_edits:
+        (variant_dir / "resume.tex").write_text(text, encoding="utf-8")
+        # Change ids are positions in the manifest's changes list (see load_manifest),
+        # so update edits by index first, then delete drops in descending order.
+        manifest_path = variant_dir / "changes.json"
+        raw = json.loads(read_text(manifest_path))
+        for cid in applied_edits:
+            raw["changes"][cid]["after"] = edits[cid]
+        for cid in sorted(applied_drops, reverse=True):
+            del raw["changes"][cid]
+        manifest_path.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    return {
+        "dropped_applied": len(applied_drops),
+        "edited_applied": len(applied_edits),
+        "skipped": sorted(failed),
+        "warnings": warnings,
+    }
+
+
+def recompile_variant(variant_dir: Path, max_pages: int) -> dict:
+    """Best-effort recompile of <variant_dir>/resume.tex into build/ after an apply,
+    so the re-rendered report embeds a preview of the final file."""
+    if not (shutil.which("latexmk") or shutil.which("pdflatex")):
+        return {"compiled": False, "skipped": "no LaTeX toolchain (latexmk/pdflatex) found"}
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from check_latex_resume import compile_latex, count_pdf_pages  # noqa: E402
+
+    compiled, log, pdf_path = compile_latex(variant_dir / "resume.tex", variant_dir / "build", "auto")
+    if not compiled:
+        return {"compiled": False, "error": "\n".join(log.splitlines()[-15:])}
+    pages = count_pdf_pages(pdf_path)
+    return {
+        "compiled": True,
+        "pdf": str(pdf_path),
+        "pages": pages,
+        "within_limit": pages is not None and pages <= max_pages,
+    }
 
 
 def compile_preview(variant_dir: Path, tex_text: str, max_pages: int) -> dict:
@@ -1283,7 +1400,7 @@ def serve_report(report_path: Path, variants: list[dict], report_data: dict, por
                 dropped = set(int(i) for i in req.get("dropped", []))
                 edits = {int(k): str(t) for k, t in dict(req.get("edits", {})).items()}
                 vdata = report_data["variants"][name]
-                text, warnings = build_final_text(vdata["variant_text"], vdata["changes"], dropped, edits)
+                text, warnings, _failed = build_final_text(vdata["variant_text"], vdata["changes"], dropped, edits)
                 result = compile_preview(variant_dirs[name], text, max_pages)
                 if warnings:
                     result["warnings"] = warnings
@@ -1326,6 +1443,14 @@ def main() -> int:
         help="Compiled PDF of the original resume for the side-by-side preview (default: auto-detect <orig-dir>/build/<stem>.pdf)",
     )
     parser.add_argument("--max-pages", type=int, default=1, help="Page limit used by the live preview status")
+    parser.add_argument(
+        "--apply-decisions",
+        type=Path,
+        default=None,
+        metavar="DECISIONS_JSON",
+        help="Apply a Keep/Edit/Drop decisions JSON (exported from the report) to its variant before "
+        "rendering: revert dropped changes, swap in edited wording, sync changes.json, and recompile.",
+    )
     parser.add_argument(
         "--serve",
         type=int,
@@ -1376,6 +1501,35 @@ def main() -> int:
             }
         )
 
+    apply_summary = None
+    if args.apply_decisions:
+        try:
+            decisions = parse_decisions(args.apply_decisions)
+        except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
+            print(json.dumps({"ok": False, "error": f"Invalid decisions file {args.apply_decisions}: {exc}"}))
+            return 1
+        target = next((v for v in variants if v["name"] == decisions["variant"]), None)
+        if target is None:
+            names = [v["name"] for v in variants]
+            print(json.dumps({"ok": False, "error": f'Decisions variant "{decisions["variant"]}" not among loaded variants {names}'}))
+            return 1
+        vdata = build_report_data(original_units, [target])["variants"][target["name"]]
+        try:
+            apply_summary = apply_decisions(target["dir"], vdata, decisions["dropped"], decisions["edits"])
+        except ValueError as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}))
+            return 1
+        apply_summary["variant"] = target["name"]
+        apply_summary["compile"] = recompile_variant(target["dir"], args.max_pages)
+        # Reload from disk so validation and the report reflect the applied state.
+        manifest = load_manifest(target["dir"] / "changes.json")
+        units = extract_units(read_text(target["tex"]))
+        target["manifest"] = manifest
+        target["units"] = units
+        target["pairing"] = pair_variant(original_units, units, manifest)
+        target["keywords"] = verify_keywords(manifest, units)
+        target["preview_pages"] = pdf_pages_to_data_uris(find_variant_pdf(target["dir"]))
+
     original_pdf = (
         args.original_pdf.resolve()
         if args.original_pdf
@@ -1403,13 +1557,19 @@ def main() -> int:
             for v in variants
         ],
     }
+    if apply_summary is not None:
+        summary["applied"] = apply_summary
     print(json.dumps(summary, indent=2), flush=True)
 
     if args.serve is not None:
         report_data = build_report_data(original_units, variants)
         serve_report(out_path, variants, report_data, args.serve, args.max_pages)
         return 0
-    return 0 if summary["ok"] else 3
+    if not summary["ok"]:
+        return 3
+    if apply_summary is not None and apply_summary["skipped"]:
+        return 4
+    return 0
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ Run from the repo root:
 
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -15,11 +16,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "latex-resume-ta
 
 from render_review import (  # noqa: E402
     Unit,
+    apply_decisions,
     build_final_text,
+    build_report_data,
     extract_units,
     latex_to_plain,
     load_manifest,
     pair_variant,
+    parse_decisions,
     read_text,
     sanitize_variant_name,
     verify_keywords,
@@ -230,14 +234,14 @@ class TestBuildFinalText(unittest.TestCase):
                 "prev_raw": "",
             }
         ]
-        text, warnings = build_final_text(variant_text, changes, dropped_ids={0})
+        text, warnings, _ = build_final_text(variant_text, changes, dropped_ids={0})
         self.assertEqual(warnings, [])
         self.assertEqual(text, ORIG)
 
     def test_kept_change_is_untouched(self):
         variant_text = ORIG.replace("Developed a", "Engineered a")
         changes = [{"id": 0, "type": "rewrite", "kind": "bullet", "orig_raw": "x", "var_raw": "y", "prev_raw": ""}]
-        text, _ = build_final_text(variant_text, changes, dropped_ids=set())
+        text, _, _ = build_final_text(variant_text, changes, dropped_ids=set())
         self.assertEqual(text, variant_text)
 
     def test_dropped_add_removes_the_bullet(self):
@@ -253,7 +257,7 @@ class TestBuildFinalText(unittest.TestCase):
                 "prev_raw": "",
             }
         ]
-        text, warnings = build_final_text(variant_text, changes, dropped_ids={0})
+        text, warnings, _ = build_final_text(variant_text, changes, dropped_ids={0})
         self.assertEqual(warnings, [])
         self.assertNotIn("integration tests", text)
 
@@ -274,10 +278,11 @@ class TestBuildFinalText(unittest.TestCase):
                 "prev_raw": "",
             }
         ]
-        text, warnings = build_final_text(dup, changes, dropped_ids={0})
+        text, warnings, failed = build_final_text(dup, changes, dropped_ids={0})
         self.assertEqual(text, dup)  # nothing silently rewritten
         self.assertEqual(len(warnings), 1)
         self.assertIn("appears 2 times", warnings[0])
+        self.assertEqual(failed, {0})
 
     def test_latex_special_chars_survive_revert(self):
         # $ & \ in replacement text must be inserted literally
@@ -292,7 +297,7 @@ class TestBuildFinalText(unittest.TestCase):
                 "prev_raw": "",
             }
         ]
-        text, warnings = build_final_text(variant_text, changes, dropped_ids={0})
+        text, warnings, _ = build_final_text(variant_text, changes, dropped_ids={0})
         self.assertEqual(warnings, [])
         self.assertIn("saving \\textbf{\\$5,000} annually", text)
 
@@ -309,7 +314,7 @@ class TestBuildFinalText(unittest.TestCase):
             }
         ]
         edited = "Shipped a C\\#/.NET installer with WiX, saving \\textbf{\\$5,000} annually."
-        text, warnings = build_final_text(variant_text, changes, dropped_ids=set(), edits={0: edited})
+        text, warnings, _ = build_final_text(variant_text, changes, dropped_ids=set(), edits={0: edited})
         self.assertEqual(warnings, [])
         self.assertIn(edited, text)
         self.assertNotIn("Engineered a C\\#", text)
@@ -327,7 +332,7 @@ class TestBuildFinalText(unittest.TestCase):
                 "prev_raw": "",
             }
         ]
-        text, warnings = build_final_text(
+        text, warnings, _ = build_final_text(
             variant_text, changes, dropped_ids=set(), edits={0: "Wrote end-to-end tests for the installer."}
         )
         self.assertEqual(warnings, [])
@@ -349,10 +354,11 @@ class TestBuildFinalText(unittest.TestCase):
                 "prev_raw": "",
             }
         ]
-        text, warnings = build_final_text(dup, changes, dropped_ids=set(), edits={0: "Led a team of six engineers."})
+        text, warnings, failed = build_final_text(dup, changes, dropped_ids=set(), edits={0: "Led a team of six engineers."})
         self.assertEqual(text, dup)  # nothing silently rewritten
         self.assertEqual(len(warnings), 1)
         self.assertIn("appears 2 times", warnings[0])
+        self.assertEqual(failed, {0})
 
     def test_drop_wins_over_edit_for_the_same_change(self):
         # The UI can't produce both, but a hand-crafted request could; drop must win.
@@ -367,9 +373,132 @@ class TestBuildFinalText(unittest.TestCase):
                 "prev_raw": "",
             }
         ]
-        text, warnings = build_final_text(variant_text, changes, dropped_ids={0}, edits={0: "Whatever."})
+        text, warnings, _ = build_final_text(variant_text, changes, dropped_ids={0}, edits={0: "Whatever."})
         self.assertEqual(warnings, [])
         self.assertEqual(text, ORIG)
+
+
+# ---------------------------------------------------------------------------
+# Applying a decisions JSON (--apply-decisions)
+# ---------------------------------------------------------------------------
+
+INSTALLER_BEFORE = "Developed a C\\#/.NET installer with WiX, saving \\textbf{\\$5,000} annually."
+INSTALLER_AFTER = "Engineered a C\\#/.NET installer with WiX, saving \\textbf{\\$5,000} annually."
+PIPELINES_BEFORE = "Automated data pipelines in Python, improving efficiency by \\textbf{85\\%}."
+PIPELINES_AFTER = "Orchestrated data pipelines in Python, improving efficiency by \\textbf{85\\%}."
+
+
+class TestApplyDecisions(unittest.TestCase):
+    def _setup_variant(self, var_src: str, changes: list[dict], orig_src: str = ORIG):
+        td = tempfile.TemporaryDirectory()
+        self.addCleanup(td.cleanup)
+        vdir = Path(td.name)
+        (vdir / "resume.tex").write_text(var_src, encoding="utf-8")
+        raw = {"meta": {"variant": "strict"}, "jd_requirements": [], "changes": changes, "keywords": []}
+        (vdir / "changes.json").write_text(json.dumps(raw, indent=2), encoding="utf-8")
+        m = load_manifest(vdir / "changes.json")
+        original = extract_units(orig_src)
+        vunits = extract_units(var_src)
+        pairing = pair_variant(original, vunits, m)
+        data = build_report_data(
+            original,
+            [{"name": "strict", "units": vunits, "tex": vdir / "resume.tex", "pairing": pairing, "manifest": m}],
+        )
+        return vdir, data["variants"]["strict"]
+
+    def test_dropped_change_reverts_file_and_removes_manifest_entry(self):
+        var_src = ORIG.replace("Developed a", "Engineered a")
+        vdir, vdata = self._setup_variant(var_src, [{"before": INSTALLER_BEFORE, "after": INSTALLER_AFTER}])
+        result = apply_decisions(vdir, vdata, dropped={0}, edits={})
+        self.assertEqual(result["skipped"], [])
+        self.assertEqual(result["dropped_applied"], 1)
+        self.assertEqual((vdir / "resume.tex").read_text(encoding="utf-8"), ORIG)
+        raw = json.loads((vdir / "changes.json").read_text(encoding="utf-8"))
+        self.assertEqual(raw["changes"], [])
+
+    def test_edited_change_updates_file_and_manifest_after(self):
+        var_src = ORIG.replace("Developed a", "Engineered a")
+        vdir, vdata = self._setup_variant(var_src, [{"before": INSTALLER_BEFORE, "after": INSTALLER_AFTER}])
+        edited = "Shipped a C\\#/.NET installer with WiX, saving \\textbf{\\$5,000} annually."
+        result = apply_decisions(vdir, vdata, dropped=set(), edits={0: edited})
+        self.assertEqual(result["skipped"], [])
+        self.assertEqual(result["edited_applied"], 1)
+        final = (vdir / "resume.tex").read_text(encoding="utf-8")
+        self.assertIn(edited, final)
+        self.assertNotIn("Engineered a C\\#", final)
+        raw = json.loads((vdir / "changes.json").read_text(encoding="utf-8"))
+        self.assertEqual(raw["changes"][0]["after"], edited)
+
+    def test_mixed_drop_and_edit_survive_index_shift_and_revalidate_clean(self):
+        var_src = ORIG.replace("Developed a", "Engineered a").replace("Automated data", "Orchestrated data")
+        changes = [
+            {"before": INSTALLER_BEFORE, "after": INSTALLER_AFTER},
+            {"before": PIPELINES_BEFORE, "after": PIPELINES_AFTER},
+        ]
+        vdir, vdata = self._setup_variant(var_src, changes)
+        edited = "Orchestrated data pipelines in Python and Airflow, improving efficiency by \\textbf{85\\%}."
+        result = apply_decisions(vdir, vdata, dropped={0}, edits={1: edited})
+        self.assertEqual(result["skipped"], [])
+        final = (vdir / "resume.tex").read_text(encoding="utf-8")
+        self.assertIn(INSTALLER_BEFORE, final)  # drop reverted the installer bullet
+        self.assertIn(edited, final)
+        raw = json.loads((vdir / "changes.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(raw["changes"]), 1)
+        self.assertEqual(raw["changes"][0]["after"], edited)  # edit landed despite the deleted entry before it
+        # The applied state must pass validation with zero unexplained changes.
+        m = load_manifest(vdir / "changes.json")
+        pairing = pair_variant(extract_units(ORIG), extract_units(final), m)
+        self.assertEqual(pairing["problems"], [])
+        self.assertEqual(pairing["unexplained"], [])
+
+    def test_ambiguous_drop_is_skipped_and_manifest_kept(self):
+        orig = wrap_doc(
+            "\\sectionline{A}\n\\begin{itemize}\n  \\item Managed a team of five engineers.\n\\end{itemize}\n"
+            "\\sectionline{B}\n\\begin{itemize}\n  \\item Led a team of five engineers.\n\\end{itemize}"
+        )
+        var_src = orig.replace("Managed a team", "Led a team")
+        changes = [{"before": "Managed a team of five engineers.", "after": "Led a team of five engineers."}]
+        vdir, vdata = self._setup_variant(var_src, changes, orig_src=orig)
+        result = apply_decisions(vdir, vdata, dropped={0}, edits={})
+        self.assertEqual(result["skipped"], [0])
+        self.assertEqual(result["dropped_applied"], 0)
+        self.assertTrue(result["warnings"])
+        self.assertEqual((vdir / "resume.tex").read_text(encoding="utf-8"), var_src)  # untouched
+        raw = json.loads((vdir / "changes.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(raw["changes"]), 1)  # entry kept so validation still explains the edit
+
+    def test_unknown_change_id_raises(self):
+        var_src = ORIG.replace("Developed a", "Engineered a")
+        vdir, vdata = self._setup_variant(var_src, [{"before": INSTALLER_BEFORE, "after": INSTALLER_AFTER}])
+        with self.assertRaises(ValueError):
+            apply_decisions(vdir, vdata, dropped={7}, edits={})
+
+    def _write_json(self, payload) -> Path:
+        f = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+        json.dump(payload, f)
+        f.close()
+        self.addCleanup(Path(f.name).unlink)
+        return Path(f.name)
+
+    def test_parse_decisions_accepts_the_exported_shape(self):
+        path = self._write_json(
+            {
+                "variant": "strict",
+                "source_report": "/x/review.html",
+                "kept": [{"id": 2, "section": "S", "summary": "..."}],
+                "dropped": [{"id": 0, "section": "S", "summary": "..."}],
+                "edited": [{"id": 1, "section": "S", "summary": "...", "new_latex": "New wording."}],
+            }
+        )
+        d = parse_decisions(path)
+        self.assertEqual(d["variant"], "strict")
+        self.assertEqual(d["dropped"], {0})
+        self.assertEqual(d["edits"], {1: "New wording."})
+
+    def test_parse_decisions_rejects_empty_new_latex(self):
+        path = self._write_json({"variant": "strict", "edited": [{"id": 0, "new_latex": "   "}]})
+        with self.assertRaises(ValueError):
+            parse_decisions(path)
 
 
 # ---------------------------------------------------------------------------
@@ -390,6 +519,45 @@ class TestKeywordVerification(unittest.TestCase):
         self.assertFalse(by_term["Python"]["mismatch"])
         self.assertTrue(by_term["Kubernetes"]["mismatch"])
         self.assertFalse(by_term["distributed systems"]["mismatch"])  # honest gap, not a lie
+
+    def test_short_terms_do_not_match_inside_other_words(self):
+        src = wrap_doc(
+            "\\section{S}\n\\begin{itemize}\n"
+            "  \\item Designed graph algorithms for a Django app in JavaScript.\n"
+            "\\end{itemize}"
+        )
+        units = units_of(src)
+        m = manifest([], keywords=[
+            {"term": "Go", "status": "covered", "where": "claimed"},        # "alGOrithms", "djanGO"
+            {"term": "R", "status": "covered", "where": "claimed"},          # letters everywhere
+            {"term": "Java", "status": "covered", "where": "claimed"},       # "JAVAscript"
+            {"term": "JavaScript", "status": "covered", "where": "bullet"},  # genuinely present
+        ])
+        by_term = {r["term"]: r for r in verify_keywords(m, units)}
+        self.assertTrue(by_term["Go"]["mismatch"])
+        self.assertTrue(by_term["R"]["mismatch"])
+        self.assertTrue(by_term["Java"]["mismatch"])
+        self.assertFalse(by_term["JavaScript"]["mismatch"])
+
+    def test_symbol_suffixed_terms_match_exactly(self):
+        src = wrap_doc(
+            "\\section{S}\n\\begin{itemize}\n"
+            "  \\item Built C\\#/.NET and C++ services with Node.js and Go.\n"
+            "\\end{itemize}"
+        )
+        units = units_of(src)
+        m = manifest([], keywords=[
+            {"term": "C#", "status": "covered", "where": "bullet"},
+            {"term": ".NET", "status": "covered", "where": "bullet"},
+            {"term": "C++", "status": "covered", "where": "bullet"},
+            {"term": "Node.js", "status": "covered", "where": "bullet"},
+            {"term": "Go", "status": "covered", "where": "bullet"},
+            {"term": "C", "status": "covered", "where": "claimed"},  # C# and C++ are not evidence of C
+        ])
+        by_term = {r["term"]: r for r in verify_keywords(m, units)}
+        for present in ("C#", ".NET", "C++", "Node.js", "Go"):
+            self.assertFalse(by_term[present]["mismatch"], present)
+        self.assertTrue(by_term["C"]["mismatch"])
 
 
 class TestManifestHardening(unittest.TestCase):
