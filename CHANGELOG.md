@@ -2,6 +2,17 @@
 
 All notable changes to the latex-resume-tailoring skill.
 
+## [0.7.0] - 2026-07-09
+
+### Added
+- `render_review.py --apply-decisions decisions.json`: deterministic, scripted application of the report's Keep/Edit/Drop selections. Dropped changes are reverted in `resume.tex` and removed from `changes.json`; edited changes get their `new_latex` in both the file and the manifest entry's `after`; the variant is recompiled and the report re-rendered — all in one command. Replaces the previous flow where the agent hand-edited `resume.tex` and the manifest after receiving a decisions JSON (the only step in the loop without a machine guarantee). Unsafe applications (ambiguous or missing text) are skipped, reported under `applied.skipped`, and signalled with new exit code 4; their manifest entries stay untouched so re-validation still passes.
+- `build_final_text()` now also returns the set of change ids whose drop/edit was skipped, so callers can sync the manifest precisely.
+- Tests for the apply flow: file + manifest sync, index-shift safety when dropping and editing in the same run, unsafe-skip reporting, decisions-JSON parsing (exported shape, empty-edit rejection), and post-apply revalidation.
+
+### Fixed
+- Keyword auto-verification used plain substring matching, so short JD terms were falsely verified ✓ inside unrelated words — "Go" by "algorithms"/"Django", "Java" by "JavaScript", "R"/"C" by almost anything. Now whole-token matching: a term must not butt against alphanumerics, and a bare "C" is not evidenced by "C++"/"C#", while symbol terms ("C++", "C#", ".NET", "Node.js") still match exactly.
+- `VERSION` file was left at 0.5.0 by the 0.6.0 release, which broke `setup.sh --upgrade` version comparison; now 0.7.0.
+
 ## [0.6.0] - 2026-07-08
 
 ### Added
