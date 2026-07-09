@@ -416,6 +416,25 @@ class TestApplyDecisions(unittest.TestCase):
         raw = json.loads((vdir / "changes.json").read_text(encoding="utf-8"))
         self.assertEqual(raw["changes"], [])
 
+    def test_apply_backs_up_both_files_before_mutating(self):
+        var_src = ORIG.replace("Developed a", "Engineered a")
+        vdir, vdata = self._setup_variant(var_src, [{"before": INSTALLER_BEFORE, "after": INSTALLER_AFTER}])
+        pre_tex = (vdir / "resume.tex").read_text(encoding="utf-8")
+        pre_manifest = (vdir / "changes.json").read_text(encoding="utf-8")
+        apply_decisions(vdir, vdata, dropped={0}, edits={})
+        # Backups hold the pre-apply contents so a bad edit or mid-write failure is recoverable.
+        self.assertEqual((vdir / "resume.tex.bak").read_text(encoding="utf-8"), pre_tex)
+        self.assertEqual((vdir / "changes.json.bak").read_text(encoding="utf-8"), pre_manifest)
+
+    def test_noop_apply_writes_nothing_and_no_backup(self):
+        vdir, vdata = self._setup_variant(ORIG, [{"before": INSTALLER_BEFORE, "after": INSTALLER_AFTER}])
+        # Neither dropping nor editing anything must not touch the files or leave backups.
+        result = apply_decisions(vdir, vdata, dropped=set(), edits={})
+        self.assertEqual(result["dropped_applied"], 0)
+        self.assertEqual(result["edited_applied"], 0)
+        self.assertFalse((vdir / "resume.tex.bak").exists())
+        self.assertFalse((vdir / "changes.json.bak").exists())
+
     def test_edited_change_updates_file_and_manifest_after(self):
         var_src = ORIG.replace("Developed a", "Engineered a")
         vdir, vdata = self._setup_variant(var_src, [{"before": INSTALLER_BEFORE, "after": INSTALLER_AFTER}])
