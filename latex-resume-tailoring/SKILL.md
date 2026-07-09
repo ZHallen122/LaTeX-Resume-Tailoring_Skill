@@ -106,7 +106,14 @@ Served over HTTP, every panel gains a **Recompile preview** button: the user dro
 
 The report shows per-bullet before/after with word-level highlights, rationale, risk badges, the needs-confirmation checklist, keyword coverage, and what was kept verbatim.
 
-The report is also interactive: every change card has a **Keep / Edit / Drop** toggle. The user can drop any change they dislike, or click Edit to fine-tune the suggested wording in place (the box takes raw LaTeX), then click "Download final resume.tex" to get a file with dropped changes reverted and edits applied (built entirely in the browser), or "Copy decisions JSON" to hand their selections back to you. **When the user pastes a decisions JSON**, apply it server-side: revert each `dropped` change in the variant's `resume.tex` and delete its `changes.json` entry; for each `edited` entry, replace the change's "after" text with `new_latex` in `resume.tex` and update the manifest entry's `after` field to match (keep its rationale/evidence, adjusting them only if the edit changed the claim). Then recompile and re-run `render_review.py` so the report matches the final file.
+The report is also interactive: every change card has a **Keep / Edit / Drop** toggle. The user can drop any change they dislike, or click Edit to fine-tune the suggested wording in place (the box takes raw LaTeX), then click "Download final resume.tex" to get a file with dropped changes reverted and edits applied (built entirely in the browser), or "Copy decisions JSON" to hand their selections back to you. **When the user pastes a decisions JSON**, save it to a file and apply it with the script — never hand-edit the files:
+
+```bash
+python3 scripts/render_review.py --original path/to/resume.tex \
+  --variant <strict-dir> --variant <stretch-dir> --apply-decisions decisions.json
+```
+
+Only the variant named in the decisions file is modified: each `dropped` change is reverted in its `resume.tex` and removed from `changes.json`; each `edited` change gets its `new_latex` in the file and in the manifest entry's `after`. The variant is then recompiled and the report re-rendered, so one command leaves files, manifest, PDF, and report consistent. **Exit code 4 means some decisions were skipped as unsafe** (ambiguous or missing text — listed under `applied.skipped` in the JSON summary): apply those few by hand, keep their manifest entries honest, and re-run without `--apply-decisions` until the summary is clean. After applying, re-read each edited entry's rationale/evidence and adjust them if the user's wording changed the claim.
 
 ### 8. Review from four angles
 
