@@ -2,6 +2,26 @@
 
 All notable changes to the latex-resume-tailoring skill.
 
+## [0.8.0] - 2026-07-09
+
+### Added
+- **Apply & download final PDF** button (serve mode): a new `/apply` endpoint on the live-review server runs the same logic as `--apply-decisions` — dropped changes are reverted in the variant's `resume.tex` and removed from `changes.json`, edits are written to both, the variant is recompiled, the report re-renders — and the browser downloads the final compiled PDF. This replaces the old flow where the primary button handed the user a browser-built `.tex` they had to compile themselves, which silently diverged from the files on disk. Loopback/origin hardening and a compile lock cover the new endpoint; after an apply the page reloads to show the applied state and the variant's saved selections are cleared (change ids shift when manifest entries are dropped).
+
+### Changed
+- Download flow de-confused: in serve mode "Apply & download final PDF" is the single primary action; without a server, "Copy decisions JSON" (hand back to the agent) is primary. The browser-built `.tex` download is demoted to "Download edited .tex" with an explicit "compile it yourself / files on disk are not updated" tooltip.
+
+### Security
+- Hardened the live-preview server's mutating endpoints (`/recompile`, `/apply`). The prior `Host`/`Origin` check used prefix matching, so `localhost.evil.com` / `127.0.0.1.evil.com` passed it — a malicious page could drive a no-preflight cross-origin POST to `/apply` and overwrite the user's `resume.tex` and `changes.json` on disk. Now: a per-process secret token is injected into the served page (never written to the on-disk report) and required on every mutating POST — a cross-origin page cannot read the loopback response, so it cannot learn the token; `Host`/`Origin` are matched by exact loopback hostname instead of prefix; and a non-`application/json` content type is rejected to close the CORS simple-request path.
+- `apply_decisions()` now writes a one-deep `.bak` of both `resume.tex` and `changes.json` before the destructive apply, and computes the new manifest fully before touching either file, so a bad edit or a mid-write failure is recoverable. The report's Apply button no longer clears the browser's saved Keep/Edit/Drop selections when nothing was actually applied.
+- Review report UI overhaul for readability and usability:
+  - New masthead: the JD title is the page headline, file paths are tucked into a collapsible "Source files" block instead of dominating the header.
+  - Filter bar per variant (All / Kept / Edited / Dropped / Needs confirmation) so long reviews can be worked through by decision state, with an empty-state message when a filter matches nothing.
+  - Sticky action bar now shows a live decision breakdown as colored Keep/Edited/Dropped pills, plus a **Reset** button that clears all saved selections for the variant (with confirmation).
+  - The long usage paragraph is now a collapsible "How this review works" step list.
+  - Cards get a decision-colored left edge (green kept, amber edited, red dashed dropped), before/after columns sit on tinted panels, and risk badges use theme variables so "adjacent"/"needs confirmation" are legible in dark mode (previously hardcoded light-only colors).
+  - Variant tabs show their change count and the tab row is hidden when there is only one variant.
+  - General polish: refined light/dark palettes, card shadows, hover/focus-visible states, smooth panel transitions, and table row hover.
+
 ## [0.7.0] - 2026-07-09
 
 ### Added

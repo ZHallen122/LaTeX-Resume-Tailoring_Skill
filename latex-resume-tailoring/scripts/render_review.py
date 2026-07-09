@@ -492,7 +492,7 @@ def render_change_card(change: dict, original: list[Unit], variant: list[Unit], 
         else ""
     )
     return f"""
-    <article class="card" id="card-{esc(vname)}-{cid}">
+    <article class="card" id="card-{esc(vname)}-{cid}" data-risk="{esc(risk)}">
       <header>
         <span class="badge type">{esc(type_label)}</span>
         <span class="badge {risk_class}">{esc(risk_label)}</span>
@@ -658,6 +658,21 @@ def render_variant_panel(
         if pairing["unexplained"]
         else ""
     )
+    filterbar = (
+        f"""
+    <div class="filterbar" id="filterbar-{esc(name)}" role="group" aria-label="filter changes">
+      <span class="fb-label">Show</span>
+      <button class="fb active" data-f="all" onclick="setFilter('{esc(name)}','all')">All</button>
+      <button class="fb" data-f="kept" onclick="setFilter('{esc(name)}','kept')">Kept</button>
+      <button class="fb" data-f="edited" onclick="setFilter('{esc(name)}','edited')">Edited</button>
+      <button class="fb" data-f="dropped" onclick="setFilter('{esc(name)}','dropped')">Dropped</button>
+      <button class="fb" data-f="confirm" onclick="setFilter('{esc(name)}','confirm')">Needs confirmation</button>
+    </div>
+    <div class="filter-empty hidden" id="filter-empty-{esc(name)}">No changes match this filter.</div>"""
+        if n_changes
+        else ""
+    )
+
     actionbar = f"""
     <div class="actionbar">
       <span class="ab-count" id="ab-count-{esc(name)}"></span>
@@ -665,15 +680,30 @@ def render_variant_panel(
       <span class="ab-buttons">
         <button class="recompile-btn hidden" id="recompile-{esc(name)}"
           onclick="recompilePreview('{esc(name)}')">Recompile preview</button>
-        <button class="primary" onclick="downloadFinal('{esc(name)}')">Download final resume.tex</button>
-        <button onclick="copyDecisions('{esc(name)}')">Copy decisions JSON</button>
+        <button class="primary apply-btn hidden" id="apply-{esc(name)}"
+          onclick="applyFinal('{esc(name)}')"
+          title="Write your Keep/Edit/Drop decisions into this variant's resume.tex and changes.json, recompile, and download the final PDF">Apply &amp; download final PDF</button>
+        <button class="primary" id="copy-{esc(name)}" onclick="copyDecisions('{esc(name)}')">Copy decisions JSON</button>
+        <button onclick="downloadFinal('{esc(name)}')"
+          title="Advanced: raw LaTeX with your decisions applied in-browser — you compile it yourself; the files on disk are not updated">Download edited .tex</button>
+        <button class="subtle" onclick="resetDecisions('{esc(name)}')" title="Reset every Keep/Edit/Drop selection for this variant">Reset</button>
       </span>
     </div>
-    <p class="hint">Drop a change to revert that bullet to the original wording in the downloaded file; Edit lets you
-    fine-tune the suggested wording instead (the box takes raw LaTeX). Selections and edits are
-    saved in this browser. After downloading, recompile to re-check the one-page fit:
-    <code>python3 scripts/check_latex_resume.py resume.tex --max-pages 1</code> — or paste the decisions JSON back to
-    the agent to apply, compile, and re-review for you.</p>"""
+    <details class="howto">
+      <summary>How this review works</summary>
+      <ol>
+        <li><strong>Keep</strong> is the default — every suggested change starts accepted.</li>
+        <li><strong>Drop</strong> a change to revert that bullet to the original wording;
+            <strong>Edit</strong> lets you fine-tune the suggested wording instead (the box takes raw LaTeX).</li>
+        <li>Your selections and edits are saved in this browser automatically.</li>
+        <li>When you're done — with the live server running, <strong>Apply &amp; download final PDF</strong> writes your
+            decisions into this variant's <code>resume.tex</code> and <code>changes.json</code>, recompiles, and downloads
+            the submission-ready PDF. Without the server, <strong>Copy decisions JSON</strong> and paste it back to the
+            agent to apply, compile, and re-review for you — or <strong>Download edited .tex</strong> if you prefer to
+            compile the LaTeX yourself (this does not update the files on disk).</li>
+      </ol>
+    </details>
+    {filterbar}"""
 
     preview_html = render_preview_section(name, original_pages or [], variant_pages or [])
 
@@ -692,71 +722,125 @@ def render_variant_panel(
 
 
 CSS = """
-:root { --bg:#ffffff; --fg:#1a1d21; --muted:#6b7280; --line:#e5e7eb; --card:#f9fafb;
-  --accent:#0052a6; --add-bg:#dcfce7; --add-fg:#14532d; --del-bg:#fee2e2; --del-fg:#7f1d1d;
-  --warn:#b45309; --danger:#b91c1c; --chip:#eef2ff; --chip-fg:#3730a3; }
-@media (prefers-color-scheme: dark) { :root { --bg:#111418; --fg:#e6e8ea; --muted:#9aa3ad;
-  --line:#2a2f36; --card:#191e24; --accent:#6ea8dc; --add-bg:#14351f; --add-fg:#86efac;
-  --del-bg:#3b1a1a; --del-fg:#fca5a5; --warn:#f59e0b; --danger:#f87171; --chip:#26294a; --chip-fg:#b4bcf8; } }
+:root { --bg:#f4f5f7; --fg:#191c21; --muted:#68707b; --line:#e2e5ea; --card:#ffffff;
+  --accent:#2557d6; --accent-fg:#ffffff; --accent-soft:#e9efff;
+  --add-bg:#d9f3e3; --add-fg:#136a3c; --del-bg:#fce1e1; --del-fg:#96271f;
+  --warn:#96650a; --warn-bg:#fcf0cf; --danger:#c02b22; --danger-bg:#fce1e1;
+  --chip:#ecefff; --chip-fg:#3d43a8;
+  --shadow:0 1px 2px rgba(18,22,30,.05), 0 1px 4px rgba(18,22,30,.05);
+  --shadow-lg:0 10px 32px rgba(18,22,30,.14); }
+@media (prefers-color-scheme: dark) { :root { --bg:#0e1116; --fg:#e7e9ec; --muted:#98a1ac;
+  --line:#2a313b; --card:#171c23; --accent:#6d9bff; --accent-fg:#0e1116; --accent-soft:#1c2739;
+  --add-bg:#173425; --add-fg:#84dfa7; --del-bg:#3a1b1b; --del-fg:#f3a29b;
+  --warn:#e2b64c; --warn-bg:#322a12; --danger:#f27d72; --danger-bg:#3a1b1b;
+  --chip:#232a4c; --chip-fg:#b9c1fa;
+  --shadow:0 1px 2px rgba(0,0,0,.35);
+  --shadow-lg:0 12px 36px rgba(0,0,0,.5); } }
 * { box-sizing: border-box; }
-body { margin:0; font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--fg); }
-.wrap { max-width: 1080px; margin: 0 auto; padding: 24px 20px 80px; }
-h1 { font-size: 22px; margin: 0 0 4px; }
-.sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; word-break: break-all; }
+html { scroll-behavior: smooth; }
+body { margin:0; font:15px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  background:var(--bg); color:var(--fg); -webkit-font-smoothing:antialiased; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 28px 20px 96px; }
+button { transition: background-color .12s ease, border-color .12s ease, color .12s ease,
+  box-shadow .12s ease, transform .06s ease; }
+button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+button:active { transform:translateY(1px); }
+.masthead { margin-bottom:18px; }
+.masthead .eyebrow { font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--accent); margin-bottom:6px; }
+h1 { font-size: 26px; line-height:1.25; margin: 0 0 6px; letter-spacing:-.01em; }
+.sub { color: var(--muted); font-size: 13px; }
+.sub a { color:var(--accent); }
+.meta-files { margin-top:8px; font-size:13px; color:var(--muted); }
+.meta-files summary { cursor:pointer; user-select:none; width:max-content; padding:3px 8px; margin-left:-8px;
+  border-radius:6px; }
+.meta-files summary:hover { background:var(--accent-soft); color:var(--accent); }
+.meta-files .files { margin-top:6px; display:grid; gap:4px; word-break:break-all; }
+.howto { margin:14px 0 4px; font-size:13px; color:var(--muted); background:var(--card);
+  border:1px solid var(--line); border-radius:12px; padding:10px 14px; box-shadow:var(--shadow); }
+.howto summary { cursor:pointer; user-select:none; font-weight:600; color:var(--fg); }
+.howto ol { margin:8px 0 2px; padding-left:20px; }
+.howto li { margin:4px 0; }
 .tabs { display:flex; gap:8px; margin: 18px 0; flex-wrap: wrap; }
-.tabs button { font:600 14px/1 inherit; padding:9px 16px; border-radius:999px; border:1px solid var(--line);
-  background:var(--card); color:var(--fg); cursor:pointer; }
-.tabs button.active { background:var(--accent); border-color:var(--accent); color:#fff; }
-.panel { display:none; } .panel.active { display:block; }
+.tabs button { font:600 14px/1 inherit; padding:10px 18px; border-radius:999px; border:1px solid var(--line);
+  background:var(--card); color:var(--fg); cursor:pointer; box-shadow:var(--shadow); }
+.tabs button:hover { border-color:var(--accent); color:var(--accent); }
+.tabs button .tab-n { font-weight:700; font-size:11px; background:var(--accent-soft); color:var(--accent);
+  border-radius:999px; padding:2px 7px; margin-left:6px; }
+.tabs button.active { background:var(--accent); border-color:var(--accent); color:var(--accent-fg); }
+.tabs button.active .tab-n { background:rgba(255,255,255,.22); color:var(--accent-fg); }
+.panel { display:none; } .panel.active { display:block; animation: fadein .18s ease; }
+@keyframes fadein { from { opacity:0; transform:translateY(3px); } to { opacity:1; transform:none; } }
 .stats { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
-.stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 16px; min-width:110px; }
-.stat .n { font-size:22px; font-weight:700; } .stat .l { font-size:12px; color:var(--muted); }
-.stat.bad .n { color:var(--danger); } .stat.good .n { color:var(--add-fg); }
-.sec { margin:26px 0 10px; font-size:15px; text-transform:uppercase; letter-spacing:.04em; color:var(--accent); }
+.stat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 18px;
+  min-width:120px; box-shadow:var(--shadow); }
+.stat .n { font-size:24px; font-weight:750; letter-spacing:-.02em; } .stat .l { font-size:12px; color:var(--muted); }
+.stat.bad { border-color:var(--danger); } .stat.bad .n { color:var(--danger); }
+.stat.good .n { color:var(--add-fg); }
+.sec { margin:30px 0 12px; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+  color:var(--muted); display:flex; align-items:center; gap:10px; }
+.sec::after { content:""; flex:1; height:1px; background:var(--line); }
 .sec.danger { color:var(--danger); }
-.card { border:1px solid var(--line); border-radius:12px; background:var(--card); padding:12px 14px; margin-bottom:12px; }
-.card header { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+.card { border:1px solid var(--line); border-left:3px solid var(--line); border-radius:12px; background:var(--card);
+  padding:14px 16px; margin-bottom:12px; box-shadow:var(--shadow); transition:border-color .12s ease, opacity .15s ease; }
+.card:hover { border-color:color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.card header { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
 .badge { font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; text-transform:uppercase; letter-spacing:.03em; }
 .badge.type { background:var(--chip); color:var(--chip-fg); }
 .risk-verified { background:var(--add-bg); color:var(--add-fg); }
-.risk-adjacent { background:#fef3c7; color:#92400e; }
-.risk-confirm { background:#fde68a; color:#78350f; }
+.risk-adjacent { background:var(--warn-bg); color:var(--warn); }
+.risk-confirm { background:var(--warn-bg); color:var(--warn); box-shadow:inset 0 0 0 1px var(--warn); }
 .risk-unexplained { background:var(--del-bg); color:var(--del-fg); }
 .section-name { font-size:12px; color:var(--muted); }
 .chip { font-size:11px; background:var(--chip); color:var(--chip-fg); border-radius:999px; padding:2px 8px; }
 .cols { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
 .cols .only { grid-column: 1 / -1; }
 @media (max-width: 760px) { .cols { grid-template-columns:1fr; } }
-.col .lbl { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; margin-bottom:2px; }
+.col { background:var(--bg); border-radius:8px; padding:8px 10px; }
+.col .lbl { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase;
+  letter-spacing:.06em; margin-bottom:3px; }
 .col p { margin:0; }
 del { background:var(--del-bg); color:var(--del-fg); text-decoration:line-through; border-radius:3px; padding:0 2px; }
 ins { background:var(--add-bg); color:var(--add-fg); text-decoration:none; border-radius:3px; padding:0 2px; }
-.meta { font-size:13px; margin-top:8px; color:var(--fg); }
+.meta { font-size:13px; margin-top:9px; color:var(--fg); }
 .meta .k { display:inline-block; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;
   margin-right:8px; min-width:60px; }
 .hint { font-size:13px; color:var(--muted); margin:4px 0 12px; }
-.problems { border:1px solid var(--warn); border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:13px; }
-.tbl-wrap { overflow-x:auto; }
+.problems { border:1px solid var(--warn); background:var(--warn-bg); border-radius:10px; padding:10px 14px;
+  margin-bottom:14px; font-size:13px; }
+.tbl-wrap { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow); }
 table { border-collapse:collapse; width:100%; font-size:13px; }
-th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); }
-th { color:var(--muted); font-size:12px; text-transform:uppercase; }
+th, td { text-align:left; padding:9px 14px; border-bottom:1px solid var(--line); }
+tr:last-child td { border-bottom:0; }
+tbody tr:hover { background:var(--bg); }
+th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
 .kw-ok { color:var(--add-fg); font-weight:600; } .kw-adj { color:var(--warn); font-weight:600; }
 .kw-gap { color:var(--danger); font-weight:600; }
 .confirm { list-style:none; padding:0; } .confirm li { margin-bottom:10px; }
-.confirm label { display:block; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; cursor:pointer; }
+.confirm label { display:block; background:var(--card); border:1px solid var(--line); border-radius:10px;
+  padding:10px 12px; cursor:pointer; box-shadow:var(--shadow); }
+.confirm label:hover { border-color:var(--accent); }
 .confirm .defense { display:block; font-size:12px; color:var(--muted); margin-top:4px; }
 .unchanged { margin-top:24px; }
 .unchanged summary { cursor:pointer; color:var(--muted); font-size:14px; }
 .unchanged ul { font-size:13px; color:var(--muted); }
-.unexplained-card { border-color: var(--danger); }
-.toggle { margin-left:auto; display:inline-flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; }
-.toggle button { font:600 11px/1 inherit; padding:5px 12px; border:0; background:transparent; color:var(--muted); cursor:pointer; }
+.unexplained-card { border-color: var(--danger); border-left-color: var(--danger); }
+.toggle { margin-left:auto; display:inline-flex; border:1px solid var(--line); border-radius:999px;
+  overflow:hidden; background:var(--bg); }
+.toggle button { font:600 11px/1 inherit; padding:6px 13px; border:0; background:transparent;
+  color:var(--muted); cursor:pointer; }
+.toggle button:hover { color:var(--fg); }
 .toggle .t-keep.active { background:var(--add-bg); color:var(--add-fg); }
-.toggle .t-edit.active { background:#fef3c7; color:#92400e; }
+.toggle .t-edit.active { background:var(--warn-bg); color:var(--warn); }
 .toggle .t-drop.active { background:var(--del-bg); color:var(--del-fg); }
-.card.dropped { opacity:.5; border-style:dashed; }
+.card.kept { border-left-color: var(--add-fg); }
+.card.dropped { opacity:.55; border-style:dashed; border-left-color:var(--danger); }
 .card.dropped .cols, .card.dropped .meta { text-decoration:none; }
-.card.edited { border-color:var(--warn); }
+.card.edited { border-left-color:var(--warn); }
+.card.filtered-out { display:none; }
+.filter-empty { font-size:13px; color:var(--muted); background:var(--card); border:1px dashed var(--line);
+  border-radius:10px; padding:12px 14px; margin-bottom:12px; }
 .edited-view { margin:0; font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   background:var(--add-bg); color:var(--add-fg); border-radius:6px; padding:6px 8px;
   white-space:pre-wrap; word-break:break-word; }
@@ -765,19 +849,35 @@ th { color:var(--muted); font-size:12px; text-transform:uppercase; }
 .editbox textarea { width:100%; min-height:64px; font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   color:var(--fg); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px;
   resize:vertical; }
+.editbox textarea:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 .edit-actions { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
 .edit-actions button { font:600 12px/1 inherit; padding:7px 12px; border-radius:8px; border:1px solid var(--line);
   background:var(--card); color:var(--fg); cursor:pointer; }
-.edit-actions button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-.actionbar { position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
-  background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:6px;
-  box-shadow:0 2px 8px rgba(0,0,0,.06); }
-.ab-count { font-weight:700; font-size:14px; }
+.edit-actions button:hover { border-color:var(--accent); color:var(--accent); }
+.edit-actions button.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-fg); }
+.edit-actions button.primary:hover { color:var(--accent-fg); filter:brightness(1.08); }
+.actionbar { position:sticky; top:10px; z-index:10; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  background:var(--card); border:1px solid var(--line); border-radius:14px; padding:10px 14px; margin-bottom:8px;
+  box-shadow:var(--shadow-lg); }
+.ab-count { font-weight:700; font-size:14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ab-pill { font-size:11px; font-weight:700; border-radius:999px; padding:3px 9px; }
+.ab-pill.keep { background:var(--add-bg); color:var(--add-fg); }
+.ab-pill.edit { background:var(--warn-bg); color:var(--warn); }
+.ab-pill.drop { background:var(--del-bg); color:var(--del-fg); }
 .ab-warn { font-size:12px; color:var(--danger); }
-.ab-buttons { margin-left:auto; display:flex; gap:8px; }
-.actionbar button { font:600 13px/1 inherit; padding:9px 14px; border-radius:8px; border:1px solid var(--line);
+.ab-buttons { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
+.actionbar button { font:600 13px/1 inherit; padding:9px 14px; border-radius:9px; border:1px solid var(--line);
   background:var(--card); color:var(--fg); cursor:pointer; }
-.actionbar button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+.actionbar button:hover { border-color:var(--accent); color:var(--accent); }
+.actionbar button.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-fg); }
+.actionbar button.primary:hover { color:var(--accent-fg); filter:brightness(1.08); }
+.actionbar button.subtle { border-color:transparent; color:var(--muted); }
+.filterbar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:12px 0 4px; font-size:12px; }
+.filterbar .fb-label { color:var(--muted); font-weight:600; margin-right:2px; }
+.filterbar .fb { font:600 12px/1 inherit; padding:6px 12px; border-radius:999px; border:1px solid var(--line);
+  background:var(--card); color:var(--muted); cursor:pointer; }
+.filterbar .fb:hover { color:var(--accent); border-color:var(--accent); }
+.filterbar .fb.active { background:var(--accent); border-color:var(--accent); color:var(--accent-fg); }
 code { background:var(--card); border:1px solid var(--line); border-radius:5px; padding:1px 5px; font-size:12px; }
 .hidden { display:none !important; }
 .previews { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
@@ -785,8 +885,9 @@ code { background:var(--card); border:1px solid var(--line); border-radius:5px; 
 @media (max-width: 900px) { .previews { grid-template-columns:1fr; } }
 .previews figure { margin:0; }
 .previews figcaption { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; margin-bottom:6px; }
-.previews img { width:100%; display:block; border:1px solid var(--line); border-radius:8px; background:#fff;
-  box-shadow:0 1px 6px rgba(0,0,0,.08); margin-bottom:10px; cursor:zoom-in; }
+.previews img { width:100%; display:block; border:1px solid var(--line); border-radius:10px; background:#fff;
+  box-shadow:var(--shadow); margin-bottom:10px; cursor:zoom-in; transition:box-shadow .15s ease; }
+.previews img:hover { box-shadow:var(--shadow-lg); }
 .preview-status { font-size:12px; margin-left:4px; }
 .preview-status.bad { color:var(--danger); font-weight:700; }
 .preview-zoom-hint { font-size:12px; color:var(--muted); margin:2px 0 10px; }
@@ -874,16 +975,37 @@ function saveEdit(v, id) {
   refresh(v);
 }
 
+const filters = {};  // vname -> 'all' | 'kept' | 'edited' | 'dropped' | 'confirm'
+
+function setFilter(v, f) {
+  filters[v] = f;
+  const bar = document.getElementById('filterbar-' + v);
+  if (bar) bar.querySelectorAll('.fb').forEach(b => b.classList.toggle('active', b.dataset.f === f));
+  refresh(v);
+}
+
+function resetDecisions(v) {
+  if (!confirm('Reset every Keep/Edit/Drop selection for this variant back to Keep?')) return;
+  try { localStorage.removeItem(storeKey(v)); } catch (e) {}
+  loadDecisions(v);
+  document.querySelectorAll('#panel-' + CSS.escape(v) + ' .editbox').forEach(b => b.classList.add('hidden'));
+  refresh(v);
+}
+
 function refresh(v) {
   const d = decisions[v];
+  const f = filters[v] || 'all';
+  let visible = 0;
   DATA.variants[v].changes.forEach(c => {
     const card = document.getElementById('card-' + v + '-' + c.id);
     if (!card) return;
     const dec = d[c.id];
     const edited = typeof dec === 'string';
+    const kept = dec !== false && !edited;
+    card.classList.toggle('kept', kept);
     card.classList.toggle('dropped', dec === false);
     card.classList.toggle('edited', edited);
-    card.querySelector('.t-keep').classList.toggle('active', dec !== false && !edited);
+    card.querySelector('.t-keep').classList.toggle('active', kept);
     card.querySelector('.t-drop').classList.toggle('active', dec === false);
     const te = card.querySelector('.t-edit');
     if (te) te.classList.toggle('active', edited);
@@ -893,13 +1015,28 @@ function refresh(v) {
       ev.classList.toggle('hidden', !edited);
       if (edited) ev.textContent = dec;
     }
+    const show = f === 'all'
+      || (f === 'kept' && kept)
+      || (f === 'edited' && edited)
+      || (f === 'dropped' && dec === false)
+      || (f === 'confirm' && c.risk === 'needs-confirmation');
+    card.classList.toggle('filtered-out', !show);
+    if (show) visible++;
   });
+  const empty = document.getElementById('filter-empty-' + v);
+  if (empty) empty.classList.toggle('hidden', visible > 0 || f === 'all');
   const vals = Object.values(d);
-  const kept = vals.filter(x => x !== false).length;
+  const total = DATA.variants[v].changes.length;
   const edited = vals.filter(x => typeof x === 'string').length;
+  const dropped = vals.filter(x => x === false).length;
+  const kept = total - edited - dropped;
   const el = document.getElementById('ab-count-' + v);
-  if (el) el.textContent = 'Keeping ' + kept + ' of ' + DATA.variants[v].changes.length + ' changes'
-    + (edited ? ' (' + edited + ' edited)' : '');
+  if (el) {
+    el.innerHTML = 'Keeping ' + (total - dropped) + ' of ' + total +
+      ' <span class="ab-pill keep">' + kept + ' keep</span>' +
+      (edited ? ' <span class="ab-pill edit">' + edited + ' edited</span>' : '') +
+      (dropped ? ' <span class="ab-pill drop">' + dropped + ' dropped</span>' : '');
+  }
 }
 
 function escRe(s) { return s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&'); }
@@ -1017,26 +1154,89 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
 
-// Live recompile: only possible when the report is served by render_review.py --serve.
+// Live recompile + apply: only possible when the report is served by render_review.py --serve.
 if (location.protocol === 'http:' || location.protocol === 'https:') {
-  document.querySelectorAll('.recompile-btn').forEach(b => b.classList.remove('hidden'));
+  document.querySelectorAll('.recompile-btn, .apply-btn').forEach(b => b.classList.remove('hidden'));
+  // With Apply available it is the one primary action; Copy decisions JSON steps back.
+  document.querySelectorAll('[id^="copy-"]').forEach(b => b.classList.remove('primary'));
 }
 
-async function recompilePreview(v) {
-  const btn = document.getElementById('recompile-' + v);
+function collectDecisions(v) {
   const dropped = [], edits = {};
   DATA.variants[v].changes.forEach(c => {
     const dec = decisions[v][c.id];
     if (dec === false) dropped.push(c.id);
     else if (typeof dec === 'string') edits[c.id] = dec;
   });
+  return { dropped, edits };
+}
+
+async function applyFinal(v) {
+  const { dropped, edits } = collectDecisions(v);
+  const summary = dropped.length + ' dropped, ' + Object.keys(edits).length + ' edited';
+  if (!confirm('Apply your decisions (' + summary + ') to the files on disk?\\n\\n' +
+      'This updates resume.tex and changes.json for "' + v + '", recompiles, and downloads the final PDF.\\n' +
+      'Dropped changes are reverted permanently in that variant.')) return;
+  const btn = document.getElementById('apply-' + v);
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = 'Applying…';
+  try {
+    const res = await fetch('/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Review-Token': window.__REVIEW_TOKEN__ || '' },
+      body: JSON.stringify({ variant: v, dropped, edits })
+    });
+    const j = await res.json();
+    if (!j.ok) { alert('Apply failed:\\n' + (j.error || 'unknown error')); return; }
+    const changed = j.applied && (j.applied.dropped_applied || j.applied.edited_applied);
+    if (j.pdf) {
+      const bytes = Uint8Array.from(atob(j.pdf), ch => ch.charCodeAt(0));
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      a.download = 'resume-' + v + '-final.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    let msg = 'Decisions applied to disk (' + j.applied.dropped_applied + ' dropped, '
+      + j.applied.edited_applied + ' edited).';
+    if (j.pages != null) {
+      msg += ' Compiled to ' + j.pages + ' page' + (j.pages === 1 ? '' : 's')
+        + (j.within_limit === false ? ' — over the page limit!' : '.');
+    }
+    if (j.compile_error) msg += '\\n\\nCompile problem:\\n' + j.compile_error;
+    if (!j.pdf) msg += '\\n\\nNo PDF was produced — check the LaTeX toolchain, or ask the agent to compile.';
+    if (j.warnings && j.warnings.length) msg += '\\n\\nWarnings:\\n' + j.warnings.join('\\n');
+    // Only wipe saved selections + reload when something was actually written to
+    // disk; otherwise the user keeps their Keep/Edit/Drop work to try again.
+    if (changed) {
+      msg += '\\n\\nThe page will now reload to show the applied state.';
+      alert(msg);
+      try { localStorage.removeItem(storeKey(v)); } catch (e) {}
+      location.reload();
+    } else {
+      msg += '\\n\\nNothing was applied, so your selections are unchanged.';
+      alert(msg);
+    }
+  } catch (e) {
+    alert('Apply request failed — is the --serve process still running?\\n' + e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+async function recompilePreview(v) {
+  const btn = document.getElementById('recompile-' + v);
+  const { dropped, edits } = collectDecisions(v);
   btn.disabled = true;
   const label = btn.textContent;
   btn.textContent = 'Compiling…';
   try {
     const res = await fetch('/recompile', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Review-Token': window.__REVIEW_TOKEN__ || '' },
       body: JSON.stringify({ variant: v, dropped, edits })
     });
     const j = await res.json();
@@ -1085,6 +1285,7 @@ def build_report_data(original: list[Unit], variants: list[dict]) -> dict:
                     "id": change["_id"],
                     "type": change["type"],
                     "section": change.get("section", ""),
+                    "risk": change.get("risk", "verified"),
                     "kind": kind,
                     "orig_raw": orig_raw,
                     "var_raw": var_raw,
@@ -1112,7 +1313,11 @@ def render_report(
     panels = []
     for v in variants:
         name = v["name"]
-        tabs.append(f'<button id="tab-{esc(name)}" onclick="showTab(\'{esc(name)}\')">{esc(name)}</button>')
+        n = len(v["manifest"]["changes"])
+        tabs.append(
+            f'<button id="tab-{esc(name)}" onclick="showTab(\'{esc(name)}\')">{esc(name)}'
+            f'<span class="tab-n">{n} change{"s" if n != 1 else ""}</span></button>'
+        )
         panels.append(
             render_variant_panel(
                 name,
@@ -1129,7 +1334,8 @@ def render_report(
     variant_paths = "".join(
         f'<div>{esc(v["name"])}: <code>{esc(str(v["tex"]))}</code></div>' for v in variants
     )
-    jd_line = f'<div>JD: <a href="{esc(jd_url)}">{esc(jd_url)}</a></div>' if jd_url else ""
+    jd_line = f' · JD: <a href="{esc(jd_url)}">{esc(jd_url)}</a>' if jd_url else ""
+    generated_line = f"Generated {esc(generated)}" if generated else "Before/after review of every tailored change"
 
     data_json = json.dumps(build_report_data(original, variants)).replace("</", "<\\/")
 
@@ -1143,14 +1349,19 @@ def render_report(
 </head>
 <body>
 <div class="wrap">
-  <h1>Resume tailoring review{(" — " + esc(jd_title)) if jd_title else ""}</h1>
-  <div class="sub">
-    <div>Original (unchanged): <code>{esc(str(original_path))}</code></div>
-    {variant_paths}
-    {jd_line}
-    <div>Generated: {esc(generated)}</div>
-  </div>
-  <div class="tabs">{"".join(tabs)}</div>
+  <header class="masthead">
+    <div class="eyebrow">Resume tailoring review</div>
+    <h1>{esc(jd_title) if jd_title else "Tailored resume changes"}</h1>
+    <div class="sub">{generated_line}{jd_line}</div>
+    <details class="meta-files">
+      <summary>Source files</summary>
+      <div class="files">
+        <div>Original (unchanged): <code>{esc(str(original_path))}</code></div>
+        {variant_paths}
+      </div>
+    </details>
+  </header>
+  <div class="tabs{" hidden" if len(variants) == 1 else ""}">{"".join(tabs)}</div>
   {"".join(panels)}
 </div>
 <script type="application/json" id="report-data">{data_json}</script>
@@ -1159,7 +1370,11 @@ showTab('{esc(variants[0]["name"])}');
 Object.keys(DATA.variants).forEach(v => refresh(v));</script>
 </body>
 </html>"""
-    out_path.write_text(page, encoding="utf-8")
+    # Atomic write: --serve rewrites this file on /apply while GETs may be
+    # reading it concurrently; a rename never exposes a half-written page.
+    tmp_path = out_path.with_name(out_path.name + ".tmp")
+    tmp_path.write_text(page, encoding="utf-8")
+    tmp_path.replace(out_path)
 
 
 # ---------------------------------------------------------------------------
@@ -1286,16 +1501,24 @@ def apply_decisions(variant_dir: Path, vdata: dict, dropped: set[int], edits: di
     applied_edits = sorted(set(edits) - failed)
 
     if applied_drops or applied_edits:
-        (variant_dir / "resume.tex").write_text(text, encoding="utf-8")
+        tex_path = variant_dir / "resume.tex"
+        manifest_path = variant_dir / "changes.json"
+        # This edit is destructive (drops are irreversible in the file). Keep a
+        # one-deep backup of both files so a bad edit or a mid-write failure is
+        # recoverable, and compute the new manifest before touching either file
+        # so we never leave a half-written pair on disk.
+        raw = json.loads(read_text(manifest_path))
         # Change ids are positions in the manifest's changes list (see load_manifest),
         # so update edits by index first, then delete drops in descending order.
-        manifest_path = variant_dir / "changes.json"
-        raw = json.loads(read_text(manifest_path))
         for cid in applied_edits:
             raw["changes"][cid]["after"] = edits[cid]
         for cid in sorted(applied_drops, reverse=True):
             del raw["changes"][cid]
-        manifest_path.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        manifest_text = json.dumps(raw, indent=2, ensure_ascii=False) + "\n"
+        shutil.copy2(tex_path, tex_path.with_suffix(tex_path.suffix + ".bak"))
+        shutil.copy2(manifest_path, manifest_path.with_suffix(manifest_path.suffix + ".bak"))
+        tex_path.write_text(text, encoding="utf-8")
+        manifest_path.write_text(manifest_text, encoding="utf-8")
 
     return {
         "dropped_applied": len(applied_drops),
@@ -1353,10 +1576,44 @@ def compile_preview(variant_dir: Path, tex_text: str, max_pages: int) -> dict:
     }
 
 
-def serve_report(report_path: Path, variants: list[dict], report_data: dict, port: int, max_pages: int) -> None:
+def serve_report(
+    report_path: Path,
+    variants: list[dict],
+    report_data: dict,
+    port: int,
+    max_pages: int,
+    apply_cb=None,
+) -> None:
+    import hmac
     import http.server
+    import secrets
+    import threading
+    from urllib.parse import urlsplit
 
     variant_dirs = {v["name"]: v["dir"] for v in variants}
+    # LaTeX compiles share build dirs; one at a time.
+    compile_lock = threading.Lock()
+
+    # Per-process secret. /recompile and especially /apply have side effects
+    # (LaTeX compile; for /apply, writing the user's resume.tex + changes.json).
+    # Host/Origin string checks alone are spoofable ("localhost.evil.com"), so
+    # every mutating request must echo this token. A cross-origin page cannot
+    # read the loopback GET response, so it never learns the token and its
+    # forged POST is rejected. The token is injected into the page at GET time,
+    # never written to the on-disk report.
+    session_token = secrets.token_urlsafe(32)
+    token_script = f'<script>window.__REVIEW_TOKEN__ = "{session_token}";</script>'.encode("utf-8")
+
+    def host_is_loopback(host_header: str) -> bool:
+        # Host is "hostname[:port]"; require an exact loopback hostname, not a
+        # prefix ("127.0.0.1.evil.com" and "localhost.evil.com" must fail).
+        hostname = urlsplit("//" + host_header).hostname or ""
+        return hostname in {"127.0.0.1", "localhost", "::1"}
+
+    def origin_is_loopback(origin_header: str) -> bool:
+        if not origin_header:
+            return True  # same-origin requests may omit Origin
+        return (urlsplit(origin_header).hostname or "") in {"127.0.0.1", "localhost", "::1"}
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):  # quiet
@@ -1371,24 +1628,44 @@ def serve_report(report_path: Path, variants: list[dict], report_data: dict, por
 
         def do_GET(self):
             if self.path in {"/", "/review.html", "/index.html"}:
-                self._send(200, report_path.read_bytes(), "text/html; charset=utf-8")
+                html_bytes = report_path.read_bytes()
+                # Inject the session token just before </body> so the page's JS
+                # can echo it back on mutating POSTs.
+                marker = b"</body>"
+                idx = html_bytes.rfind(marker)
+                if idx != -1:
+                    html_bytes = html_bytes[:idx] + token_script + html_bytes[idx:]
+                self._send(200, html_bytes, "text/html; charset=utf-8")
             else:
                 self._send(404, b"not found", "text/plain")
 
         def do_POST(self):
-            if self.path != "/recompile":
+            if self.path not in {"/recompile", "/apply"}:
                 self._send(404, b"not found", "text/plain")
                 return
             # Loopback-only hardening: a hostile web page can fire a cross-origin
-            # POST whose side effect (a LaTeX compile) still runs even though the
-            # response is unreadable. Reject anything not clearly from this report.
+            # POST whose side effect (a LaTeX compile, or for /apply a file write)
+            # still runs even though the response is unreadable. Reject anything
+            # not clearly from this report.
             origin = self.headers.get("Origin", "")
             host = self.headers.get("Host", "")
-            if not host.startswith(("127.0.0.1", "localhost")):
+            if not host_is_loopback(host):
                 self._send(403, b'{"ok": false, "error": "bad host"}', "application/json")
                 return
-            if origin and not origin.startswith(("http://127.0.0.1", "http://localhost")):
+            if not origin_is_loopback(origin):
                 self._send(403, b'{"ok": false, "error": "cross-origin request rejected"}', "application/json")
+                return
+            # The token is the real gate: only a page served by this process
+            # (which can read the GET response) knows it.
+            sent_token = self.headers.get("X-Review-Token", "")
+            if not hmac.compare_digest(sent_token, session_token):
+                self._send(403, b'{"ok": false, "error": "missing or invalid session token"}', "application/json")
+                return
+            # Require a JSON content type. A cross-origin "simple request" can only
+            # set text/plain without triggering a (here unanswered) CORS preflight,
+            # so this rejects the no-preflight forgery path outright.
+            if not self.headers.get("Content-Type", "").split(";")[0].strip() == "application/json":
+                self._send(415, b'{"ok": false, "error": "expected application/json"}', "application/json")
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
@@ -1399,11 +1676,19 @@ def serve_report(report_path: Path, variants: list[dict], report_data: dict, por
                 name = req["variant"]
                 dropped = set(int(i) for i in req.get("dropped", []))
                 edits = {int(k): str(t) for k, t in dict(req.get("edits", {})).items()}
-                vdata = report_data["variants"][name]
-                text, warnings, _failed = build_final_text(vdata["variant_text"], vdata["changes"], dropped, edits)
-                result = compile_preview(variant_dirs[name], text, max_pages)
-                if warnings:
-                    result["warnings"] = warnings
+                if self.path == "/apply":
+                    if apply_cb is None:
+                        result = {"ok": False, "error": "apply is not available in this server"}
+                    else:
+                        with compile_lock:
+                            result = apply_cb(name, dropped, edits)
+                else:
+                    vdata = report_data["variants"][name]
+                    text, warnings, _failed = build_final_text(vdata["variant_text"], vdata["changes"], dropped, edits)
+                    with compile_lock:
+                        result = compile_preview(variant_dirs[name], text, max_pages)
+                    if warnings:
+                        result["warnings"] = warnings
             except Exception as exc:  # surface errors to the page instead of a broken response
                 result = {"ok": False, "error": str(exc)}
             self._send(200, json.dumps(result).encode("utf-8"), "application/json")
@@ -1563,7 +1848,41 @@ def main() -> int:
 
     if args.serve is not None:
         report_data = build_report_data(original_units, variants)
-        serve_report(out_path, variants, report_data, args.serve, args.max_pages)
+
+        def serve_apply(name: str, dropped: set[int], edits: dict[int, str]) -> dict:
+            """Server twin of --apply-decisions for the report's Apply button:
+            write the decisions into the variant's files, recompile, refresh the
+            in-memory state and the report on disk, and hand back the final PDF."""
+            target = next((v for v in variants if v["name"] == name), None)
+            if target is None:
+                return {"ok": False, "error": f"unknown variant {name!r}"}
+            vdata = build_report_data(original_units, [target])["variants"][name]
+            summary = apply_decisions(target["dir"], vdata, dropped, edits)
+            compile_info = recompile_variant(target["dir"], args.max_pages)
+            # Reload from disk so the served report and later applies see the new state
+            # (change ids are manifest positions, so they shift after a drop).
+            target["manifest"] = load_manifest(target["dir"] / "changes.json")
+            target["units"] = extract_units(read_text(target["tex"]))
+            target["pairing"] = pair_variant(original_units, target["units"], target["manifest"])
+            target["keywords"] = verify_keywords(target["manifest"], target["units"])
+            target["preview_pages"] = pdf_pages_to_data_uris(find_variant_pdf(target["dir"]))
+            render_report(original_path, original_units, variants, out_path, original_pages=original_pages)
+            report_data["variants"] = build_report_data(original_units, variants)["variants"]
+            pdf_b64 = None
+            pdf_path = find_variant_pdf(target["dir"])
+            if compile_info.get("compiled") and pdf_path.exists():
+                pdf_b64 = base64.b64encode(pdf_path.read_bytes()).decode("ascii")
+            return {
+                "ok": True,
+                "applied": summary,
+                "pages": compile_info.get("pages"),
+                "within_limit": compile_info.get("within_limit"),
+                "compile_error": compile_info.get("error") or compile_info.get("skipped"),
+                "warnings": summary.get("warnings", []),
+                "pdf": pdf_b64,
+            }
+
+        serve_report(out_path, variants, report_data, args.serve, args.max_pages, apply_cb=serve_apply)
         return 0
     if not summary["ok"]:
         return 3
