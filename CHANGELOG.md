@@ -2,6 +2,19 @@
 
 All notable changes to the latex-resume-tailoring skill.
 
+## [0.9.0] - 2026-09-07
+
+### Added
+- **Step 4b, the fidelity check.** After rewriting and before writing the manifest, every changed unit is read back against its source on three axes: did the rewrite *add* something the source does not state (a phase like "through deployment", a scale, a difficulty claim); did it *drop* something the source does state (a metric, a technology, a scope term); did it change the *subject or actor* of the sentence. All three were violated in real runs — a bullet gained a deployment phase nobody had evidence for, a scope list was trimmed to shorten a line, and a sentence the user had written himself was rewritten so that the actor moved from the agents to the layer they run on. The step also makes two rules explicit: never silently rewrite a sentence the user wrote, and a `defense` must be something they can actually say. The result of the check is now part of the final report.
+- **`references/tooling_pitfalls.md`**, and a pointer to it from step 5. Four failure modes that recurred on nearly every run: extracted units absorb trailing scaffolding (so entry headers and the TECHNICAL SKILLS block must be declared on the *preceding* bullet's card, and two entries resolving to one unit fail under greedy matching); bash heredocs mangle backslashes and corrupt any script containing LaTeX; keyword-table terms are substring-matched and must be literal page strings; and patches to generator scripts need line-indexed anchors, because a loose substring once matched a continuation line and destroyed the definition it was inside.
+- **Reporting requirements** in step 9: what the fidelity check found, why each project earned its slot and what it displaced, which keywords left the page entirely, and any eligibility gate in the JD (graduation window, degree level, work authorization, location, sponsorship) checked against the resume and flagged up front rather than buried.
+
+### Changed
+- **The no-churn rule now has a test that runs before the edit, not after.** For each unit you intend to change, write one sentence naming what the reader now learns that they did not before; if the only available sentence is "it reads better" or "it matches the JD's tone", keep the original byte-identical. Added the corollary that relabelling something into a vaguer category to chase a keyword the JD never asks for is churn — the more specific name is almost always the better one.
+- **User rejections are now specified as durable rules.** Record the reason and the class of content it rules out, apply it to every later job, and never re-serve rejected content in a trimmed or reworded form; if a later JD makes it look valuable again, say so and let the user decide. Standing preferences carry forward the same way. This was written after the same bullet was rejected twice — once whole, once trimmed.
+- Step 4b extends the no-fabrication rule to free-text application answers drafted alongside the resume: draft only from what the user has built, read, or told you, ask for missing experiences instead of supplying them, and label scaffolding they must replace.
+- Step 5 now recommends generating the manifest from a small builder script rather than hand-writing JSON, since `before`/`after` must match extracted units exactly.
+
 ## [0.8.0] - 2026-07-09
 
 ### Added
