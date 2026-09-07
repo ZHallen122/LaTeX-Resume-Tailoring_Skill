@@ -52,6 +52,10 @@ Preserve the template: section order, macros, packages, spacing, escaping style 
 
 **Every rewritten bullet must beat the original**, meaning it adds JD-relevant information (a requirement now evidenced, a keyword now natural, a scope now explicit) or sharpens impact — while keeping every verified metric, technology, and scope term from the original. If your rewrite is merely different rather than better, revert it.
 
+**The information test — apply it before you edit, not after.** For each unit you intend to change, write one sentence naming what the reader now learns that they did not before. If the only sentence you can write is "it reads better", "it's more active", or "it matches the JD's tone", the edit is churn: keep the original byte-identical and say so in the report. A smoother sentence is not an improvement; specificity is what a reviewer actually reads, and every concrete noun dropped for concision is information the reader no longer has. This also rules out relabelling something into a vaguer category to chase a keyword the JD never asks for — the more specific name is almost always the better one.
+
+**User rejections are durable rules, not one-off notes.** When the user cuts or replaces content, record (a) their reason in their own words and (b) the *class* of content that reason rules out, then treat it as binding on every later job. Re-serving rejected content in a trimmed or reworded form is the same violation as re-serving it whole. If a later JD makes the rejected content look valuable again, do not quietly reinstate it: say that they cut it, why, what the new JD makes it worth, and let them decide. Standing *preferences* carry forward the same way — if they asked for something to be restored "when it fits", try it on every later variant and report whether it fit.
+
 Bullet shape: action verb + what was built (specific tech) + how (method/architecture) + outcome (metric/scope) — but only components the evidence supports.
 
 **Anti-patterns (all count as churn — revert on sight):**
@@ -72,9 +76,28 @@ Bullet shape: action verb + what was built (specific tech) + how (method/archite
 
 Stretch may never invent employers, titles, dates, degrees, certifications, tools, metrics, users, revenue, production deployment, compliance posture, or leadership scope, and may never convert exposure into ownership or coursework into professional experience.
 
+### 4b. Fidelity check — re-read every rewrite against its source
+
+Positioning may change; facts may not. Before writing the manifest, take each rewritten unit back to the line it came from (the original `.tex` bullet, or the vault entry) and check three axes. Report the result in the final response, including anything you reverted.
+
+1. **Added anything the source does not state?** A phase ("through deployment" when nothing says they deployed), an action, a scale, or a difficulty claim ("reconciling" where the source said "translating"). Unevidenced additions come out — including ones that merely sound safe because the rest of the sentence is true.
+2. **Dropped anything the source does state?** A metric, a technology, or a scope term. Trimming a scope list to make a line shorter is a loss, not an edit. Restore it.
+3. **Changed the subject or the actor?** "Parent agents fan out subtasks" rewritten as "the layer fans out to worker processes" moves who is doing the work. That is a change of meaning, not of emphasis.
+
+Two hard rules that fall out of this:
+
+- **Never silently rewrite a sentence the user wrote themselves.** Reproduce it verbatim, or state in the manifest why it changed.
+- A `defense` sentence is written in the user's first person, so it must be something they can actually say. If you had to invent circumstances to make it read well, the underlying edit is not allowed.
+
+The same standard governs free-text application answers written alongside the resume: draft only from what the user has actually built, read, or told you. If a question needs an experience they have not reported, ask for it rather than supplying one, and label any connective scaffolding they must replace before sending.
+
 ### 5. Write the change manifest
 
-For each variant, write `changes.json` next to its `resume.tex` following `references/changes_schema.md`. One entry per edited unit: `section`, `type`, `before`/`after` (copied from the actual files), `jd` ids, `evidence`, `risk`, `rationale`, `defense`. Also record `jd_requirements` and the `keywords` coverage table (report gaps honestly).
+For each variant, write `changes.json` next to its `resume.tex` following `references/changes_schema.md`. One entry per edited unit: `section`, `type`, `before`/`after` (copied from the actual files), `jd` ids, `evidence`, `risk`, `rationale`, `defense`. Also record `jd_requirements` and the `keywords` coverage table (report gaps honestly). When an edit was reverted during the fidelity check, keep a line about it in the surviving entry's rationale so the review page shows what was withdrawn and why.
+
+**Read `references/tooling_pitfalls.md` before writing the first manifest.** Extracted units absorb trailing scaffolding, so entry headers and the skills block belong on the *preceding* bullet's card, and two entries resolving to one unit will fail; keyword terms must be literal page strings; and any script containing LaTeX must be written with a file-write tool rather than through a bash heredoc. These are structural, not incidental — designing the manifest around them costs minutes, discovering them per job costs far more.
+
+Generating the manifest from a small builder script (anchors → full unit text) is more reliable than hand-writing JSON, because the `before`/`after` fields must match extracted units exactly.
 
 ### 6. Compile and check fit
 
@@ -122,3 +145,10 @@ Read `references/review_rubric.md`. Cover ATS, recruiter, senior-engineer, and i
 ### 9. Final response
 
 Report: original path (unchanged), both variant paths, PDF paths and page counts, the live review URL (plus the `review.html` path as fallback), per-variant change counts (declared / kept verbatim / needs-confirmation), keyword gaps, the four-angle review, and the submission recommendation. If no vault was provided, state that the resume itself was the fact boundary.
+
+Also say, without being asked:
+
+- **What the fidelity check found** (step 4b) — anything added, dropped, or reattributed, and what you reverted. "Nothing drifted" is a valid and useful answer.
+- **Why each project or entry earned its slot, and what it displaced.** Selection is the highest-leverage decision in a tailoring run and the user will ask if you don't volunteer it.
+- **What the page lost.** Cutting a bullet or a technology list removes keywords; name the ones that no longer appear anywhere and say which kinds of role would want them back.
+- **Any eligibility gate in the JD** — graduation window, degree level, work authorization, location, sponsorship — checked against the resume, flagged before the review rather than buried under it.
